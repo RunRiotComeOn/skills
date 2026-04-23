@@ -1,0 +1,26 @@
+llm:
+  provider: bedrock
+  # Default: MiniMax M2.5 - cheapest of the listed models ($0.30 / $1.20 per 1M).
+  # Swap to any Bedrock-accessible model id; region will auto-switch for
+  # qwen.qwen3-235b* to us-east-2 (see client.py).
+  model: minimax.minimax-m2.5
+  region: us-east-1
+  max_tokens: 4096
+  # API key source. Priority: env var > CSV file.
+  # CSV must have a header row including "API key".
+  api_key_env: BEDROCK_API_KEY
+  api_key_csv: ./bedrock-long-term-api-key.csv
+
+skill_map:
+  storage_path: ./data/skill_map.json
+  prereq_mastery_threshold: 2          # N: min prior successful applications for prereq validation
+  confirmation_episode_threshold: 2    # tentative -> confirmed after this many episodes
+  split_disambiguation_threshold: 3    # commit split after this many disambiguating episodes
+
+categories:
+  predefined:
+    - coding
+    - writing
+    - research_reasoning
+    - general
+  allow_uncategorized: true

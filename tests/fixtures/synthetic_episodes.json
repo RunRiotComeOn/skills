@@ -1,0 +1,55 @@
+{
+  "description": "Synthetic interaction stream for Phase 5 full-loop test. Each object is one user-side scripted task; the demo script feeds queries and outcomes into the orchestrator in order.",
+  "episodes": [
+    {
+      "task_category": "coding",
+      "query": "Write a function that reads a CSV and returns the mean of column 'x'.",
+      "scripted_corrections": [
+        {
+          "after_assistant_turn": 0,
+          "user_reply": "No - make sure it handles missing values by skipping them, not crashing."
+        }
+      ],
+      "outcome": "success"
+    },
+    {
+      "task_category": "coding",
+      "query": "Compute the median of column 'y' in a TSV.",
+      "scripted_corrections": [
+        {
+          "after_assistant_turn": 0,
+          "user_reply": "You forgot to handle NaN again. Skip them."
+        }
+      ],
+      "outcome": "success"
+    },
+    {
+      "task_category": "writing",
+      "query": "Draft a one-paragraph release announcement for feature X.",
+      "scripted_corrections": [
+        {
+          "after_assistant_turn": 0,
+          "user_reply": "Actually, I want it written in the first person, not third."
+        }
+      ],
+      "outcome": "success"
+    },
+    {
+      "task_category": "coding",
+      "query": "Summarize the standard deviation of column 'z' in a CSV.",
+      "scripted_corrections": [],
+      "outcome": "success"
+    },
+    {
+      "task_category": "research_reasoning",
+      "query": "What are the tradeoffs between cosine and Euclidean distance for text embedding similarity?",
+      "scripted_corrections": [
+        {
+          "after_assistant_turn": 0,
+          "user_reply": "You're assuming normalized embeddings - state that assumption explicitly."
+        }
+      ],
+      "outcome": "partial"
+    }
+  ]
+}

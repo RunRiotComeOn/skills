@@ -1,0 +1,78 @@
+{
+  "profile_id": "sample_profile_fixture",
+  "generator_model": "fixture",
+  "task_type": "python_coding",
+  "preferences": [
+    {
+      "id": "pref_01",
+      "description": "I want you to state the time complexity BEFORE writing any code.",
+      "priority": 1,
+      "expected_correction_trigger": "Wait, state the time complexity first before writing code.",
+      "category": "communication_style"
+    },
+    {
+      "id": "pref_02",
+      "description": "I dislike list comprehensions with more than one nested for clause; use a regular loop instead.",
+      "priority": 2,
+      "expected_correction_trigger": "That nested comprehension is unreadable - rewrite it as a plain loop.",
+      "category": "code_style"
+    },
+    {
+      "id": "pref_03",
+      "description": "I want iterative solutions over recursive ones whenever iteration is possible, even when recursion is shorter.",
+      "priority": 3,
+      "expected_correction_trigger": "Don't use recursion here - rewrite iteratively.",
+      "category": "code_style"
+    },
+    {
+      "id": "pref_04",
+      "description": "Skip the preamble. Don't restate the problem before answering.",
+      "priority": 4,
+      "expected_correction_trigger": "Cut the intro, go straight to the solution.",
+      "category": "communication_style"
+    },
+    {
+      "id": "pref_05",
+      "description": "Before solving, always enumerate 2-3 edge cases that the solution will handle.",
+      "priority": 5,
+      "expected_correction_trigger": "What edge cases are you covering? List them first.",
+      "category": "diagnostic_approach"
+    },
+    {
+      "id": "pref_06",
+      "description": "Prefer stdlib over third-party packages; only import third-party if stdlib is truly insufficient.",
+      "priority": 6,
+      "expected_correction_trigger": "No third-party deps if stdlib can do it.",
+      "category": "tool_usage"
+    },
+    {
+      "id": "pref_07",
+      "description": "I want type hints on every function signature.",
+      "priority": 7,
+      "expected_correction_trigger": "Add type hints to the signatures.",
+      "category": "code_style"
+    },
+    {
+      "id": "pref_08",
+      "description": "Keep explanations under 3 sentences unless I explicitly ask for more detail.",
+      "priority": 8,
+      "expected_correction_trigger": "Too much explanation - keep it to ~3 sentences.",
+      "category": "detail_level"
+    },
+    {
+      "id": "pref_09",
+      "description": "Never use `print` for debugging; use `logging` instead.",
+      "priority": 9,
+      "expected_correction_trigger": "Don't use print for debugging - use logging.",
+      "category": "tool_usage"
+    },
+    {
+      "id": "pref_10",
+      "description": "If input validation is needed, do it at the top of the function with explicit guards, not with try/except.",
+      "priority": 10,
+      "expected_correction_trigger": "Use explicit guards, not try/except, for input validation.",
+      "category": "diagnostic_approach"
+    }
+  ],
+  "created_at": "2026-04-21T00:00:00+00:00"
+}

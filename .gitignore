@@ -1,0 +1,39 @@
+# Secrets
+.env
+!.env.example
+bedrock-long-term-api-key.csv
+*.key
+*.pem
+
+# Runtime state
+data/
+*.log
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+env/
+
+# Tooling
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Editors
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+
+.claude/
+.pytest_cache/
+.codex
