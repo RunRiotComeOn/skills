@@ -8,10 +8,8 @@ guidelines at runtime to constrain assistant generation.
 
 ## Design: Flat Experience Library
 
-SkillMap no longer uses a prerequisite DAG, tree traversal, or BFS retrieval.
-The flat design avoids ambiguous parent-child edges, broad parent nodes blocking
-specific skills, and pending split states preventing useful guidance from being
-retrieved.
+SkillMap uses a flat library of behavioral guidelines. Each skill is selected
+from a lightweight catalog and injected only when it applies to the current task.
 
 The system follows a three-stage pipeline:
 
@@ -31,9 +29,6 @@ The system follows a three-stage pipeline:
 | `Skill` | A reusable guideline backed by multiple correction summaries |
 | `CatalogEntry` | Lightweight selector index containing skill ID, title, and trigger |
 | `SkillMapState` | Persisted state containing skills, pending summaries, and the rebuilt catalog |
-
-Old DAG concepts such as skill statuses, prerequisite edges, episodes,
-correction points, and traversal errors are intentionally removed.
 
 ## Runtime Flow
 
@@ -82,13 +77,4 @@ scripts/run_demo.py    # End-to-end demo on synthetic stream
 ```bash
 pip install -e .
 python scripts/run_demo.py
-```
-
-## Migration Note
-
-Old DAG-based `skill_map.json` data is incompatible with the flat library
-format. Delete old evaluation run data before the first flat-library run:
-
-```bash
-rm -rf eval/data/skillmap_day_runs/
 ```

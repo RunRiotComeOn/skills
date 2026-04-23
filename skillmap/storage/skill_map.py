@@ -77,6 +77,40 @@ class SkillMap:
     def get_catalog(self) -> list[CatalogEntry]:
         return list(self._state.catalog)
 
+    def delete_skill(self, skill_id: str) -> None:
+        if skill_id not in self._state.skills:
+            raise UnknownSkillError(f"unknown skill_id: {skill_id!r}")
+        del self._state.skills[skill_id]
+        self._rebuild_catalog()
+        self._persist()
+
+    def merge_skill(
+        self,
+        primary_id: str,
+        updated_title: str,
+        updated_trigger: str,
+        updated_guidance: str,
+        absorb_ids: list[str],
+    ) -> None:
+        """Update primary skill content and absorb (delete) others, merging their evidence."""
+        primary = self._require_skill(primary_id)
+        primary.title = updated_title
+        primary.catalog_trigger = updated_trigger
+        primary.guidance = updated_guidance
+        primary.updated_at = _UTC_NOW()
+
+        existing_ids = set(primary.supporting_summary_ids)
+        for aid in absorb_ids:
+            absorbed = self._state.skills.pop(aid, None)
+            if absorbed:
+                for sid in absorbed.supporting_summary_ids:
+                    if sid not in existing_ids:
+                        primary.supporting_summary_ids.append(sid)
+                        existing_ids.add(sid)
+        primary.support_count = len(primary.supporting_summary_ids)
+        self._rebuild_catalog()
+        self._persist()
+
     # ------------------------------------------------------------------
     # Internal
     # ------------------------------------------------------------------
