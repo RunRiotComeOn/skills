@@ -6,7 +6,7 @@ bedrock-long-term-api-key.csv
 *.pem
 
 # Runtime state
-data/
+data
 *.log
 
 # Python
