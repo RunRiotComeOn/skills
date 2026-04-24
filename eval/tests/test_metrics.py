@@ -9,7 +9,7 @@ import pytest
 
 from skillmap_eval.metrics.correction_rate import compute_correction_curve
 from skillmap_eval.metrics.correctness_sanity import (
-    compute_correctness_sanity,
+    compute_correctness_trajectory,
     extract_python_code,
     run_sanity_check_for_task,
 )
@@ -27,13 +27,21 @@ def _make_interaction(
     pass_rate: float | None = 1.0,
     completion: str = "user_accepted",
     is_held_out: bool = False,
+    pref_count: int | None = None,
+    corr_count: int | None = None,
 ) -> TaskInteraction:
+    # By default, attribute the whole correction_count to the preference axis
+    # so legacy tests keep their original semantics.
+    p = pref_count if pref_count is not None else correction_count
+    c = corr_count if corr_count is not None else 0
     return TaskInteraction(
         task_id=f"t{idx}",
         condition_name="stateless",
         task_index_in_stream=idx,
         turns=[],
         correction_count=correction_count,
+        preference_correction_count=p,
+        correctness_correction_count=c,
         completion_reason=completion,  # type: ignore[arg-type]
         test_case_pass_rate=pass_rate,
         retrieved_skill_ids_at_start=[],
@@ -63,13 +71,15 @@ def _make_run(
 def test_correction_curve_rolling_mean_window_3() -> None:
     run = _make_run("skillmap", [3, 2, 1, 0, 0], [])
     curve = compute_correction_curve(run, window=3)
-    assert curve.corrections_per_task == [3, 2, 1, 0, 0]
-    # Rolling means: [3], [3+2]/2=2.5, [3+2+1]/3=2.0, [2+1+0]/3=1.0, [1+0+0]/3≈0.333
-    assert curve.rolling_mean_window_3[0] == 3.0
-    assert curve.rolling_mean_window_3[1] == 2.5
-    assert curve.rolling_mean_window_3[2] == 2.0
-    assert curve.rolling_mean_window_3[3] == 1.0
-    assert abs(curve.rolling_mean_window_3[4] - 1.0 / 3) < 1e-9
+    assert curve.total_per_task == [3, 2, 1, 0, 0]
+    assert curve.preference_per_task == [3, 2, 1, 0, 0]  # default attribution
+    assert curve.correctness_per_task == [0, 0, 0, 0, 0]
+    # Rolling means (total): [3], 2.5, 2.0, 1.0, 1/3
+    assert curve.rolling_mean_window_3_total[0] == 3.0
+    assert curve.rolling_mean_window_3_total[1] == 2.5
+    assert curve.rolling_mean_window_3_total[2] == 2.0
+    assert curve.rolling_mean_window_3_total[3] == 1.0
+    assert abs(curve.rolling_mean_window_3_total[4] - 1.0 / 3) < 1e-9
 
 
 def test_generalization_handles_empty_held_out() -> None:
@@ -77,14 +87,18 @@ def test_generalization_handles_empty_held_out() -> None:
     g = compute_generalization(run)
     assert g.held_out_avg_correction_count == 0.0
     assert g.held_out_median_correction_count == 0.0
+    assert g.held_out_avg_preference_corrections == 0.0
+    assert g.held_out_avg_correctness_corrections == 0.0
 
 
-def test_correctness_sanity_averages_pass_rates() -> None:
-    run = _make_run("stateless", [0, 0], [0, 0])
-    # All interactions pass_rate=1.0 by _make_interaction default.
-    s = compute_correctness_sanity(run)
-    assert s.avg_test_pass_rate == 1.0
-    assert s.task_completion_rate == 1.0
+def test_correctness_trajectory_averages_pass_rates() -> None:
+    # Stream of 4 with pass_rate=1.0; held-out of 2 with pass_rate=1.0.
+    run = _make_run("stateless", [0, 0, 0, 0], [0, 0])
+    t = compute_correctness_trajectory(run)
+    assert t.avg_pass_rate_early == 1.0
+    assert t.avg_pass_rate_late == 1.0
+    assert t.avg_pass_rate_held_out == 1.0
+    assert t.task_completion_rate == 1.0
 
 
 def test_extract_python_code_from_fenced_block() -> None:
@@ -97,10 +111,11 @@ def test_extract_python_code_returns_none_when_no_code() -> None:
     assert extract_python_code("just prose, no code here") is None
 
 
-def test_run_sanity_check_returns_zero_when_no_code() -> None:
+def test_run_sanity_check_returns_none_when_no_code() -> None:
     fixture_path = Path(__file__).parent / "fixtures" / "sample_task.json"
     task = EvalTask.model_validate_json(fixture_path.read_text())
-    assert run_sanity_check_for_task(task, "no code at all") == 0.0
+    # No code → cannot evaluate → None (not 0.0).
+    assert run_sanity_check_for_task(task, "no code at all") is None
 
 
 def test_run_sanity_check_executes_passing_code() -> None:

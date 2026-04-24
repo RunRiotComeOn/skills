@@ -27,6 +27,7 @@ from skillmap_eval.simulator.prompts import (
     USER_RESPONSE_PROMPT,
 )
 from skillmap_eval.types import (
+    CorrectionAxis,
     EvalTask,
     Preference,
     PreferenceProfile,
@@ -37,6 +38,7 @@ from skillmap_eval.types import (
 
 class _UserSimulatorResponse(BaseModel):
     violated_prefs: list[str]
+    correction_axes: list[CorrectionAxis] = []
     decision: SimulatorAction
     response: str
 
@@ -81,7 +83,13 @@ class UserSimulator:
         task: EvalTask,
         conversation_so_far: list[SimulatedTurn],
         latest_assistant_message: str,
-    ) -> tuple[str, list[str], SimulatorAction]:
+        test_results: str = "",
+    ) -> tuple[str, list[str], list[CorrectionAxis], SimulatorAction]:
+        test_results_section = (
+            f"─────────────────────────────────────────────\n"
+            f"{test_results}\n\n"
+            if test_results else ""
+        )
         prompt = USER_RESPONSE_PROMPT.format(
             preference_profile_rendered=render_profile(self.profile),
             task_problem=task.problem_statement,
@@ -89,12 +97,18 @@ class UserSimulator:
             latest_assistant_message=latest_assistant_message,
             give_up_threshold=self.give_up_threshold_repeats,
             correction_style_hint=sample_correction_style_hint(self._rng),
+            test_results_section=test_results_section,
         )
         parsed = await self._call_and_parse_json(prompt)
 
         violated = [pid for pid in parsed.get("violated_prefs", []) if pid in self._pref_by_id]
         decision: SimulatorAction = parsed.get("decision", "accept")  # type: ignore[assignment]
         response = parsed.get("response", "")
+
+        raw_axes = parsed.get("correction_axes", []) or []
+        axes: list[CorrectionAxis] = [
+            a for a in raw_axes if a in ("preference", "correctness")
+        ]
 
         # Force give_up when the same pref has already been corrected
         # give_up_threshold_repeats times — the user is out of patience.
@@ -109,7 +123,21 @@ class UserSimulator:
         elif decision == "give_up" and not self._can_give_up(conversation_so_far, violated):
             decision = "correct" if violated else "accept"
 
-        return response, violated, decision
+        # Defensive normalization of axes against the final decision and
+        # the violated_prefs list. The axes field is the source of truth
+        # for the per-axis correction curves, so guard against an LLM that
+        # returned a stale or empty list.
+        if decision != "correct":
+            axes = []
+        else:
+            if violated and "preference" not in axes:
+                axes.append("preference")
+            if not axes:
+                # Decision is "correct" but the LLM gave no axes.
+                # Infer from violated_prefs as a last resort.
+                axes = ["preference"] if violated else ["correctness"]
+
+        return response, violated, axes, decision
 
     # ------------------------------------------------------------------
     # Helpers
@@ -161,6 +189,14 @@ class UserSimulator:
             raise ValueError(f"user simulator returned invalid decision: {parsed['decision']!r}")
         if not isinstance(parsed["response"], str):
             raise ValueError(f"user simulator expected response to be str, got {type(parsed['response']).__name__}")
+        # correction_axes is optional (defaults to []); validate when present.
+        axes = parsed.get("correction_axes", [])
+        if not isinstance(axes, list) or not all(
+            isinstance(a, str) and a in ("preference", "correctness") for a in axes
+        ):
+            raise ValueError(
+                f"user simulator returned invalid correction_axes: {axes!r}"
+            )
 
     def _can_give_up(
         self, conversation_so_far: list[SimulatedTurn], violated: list[str]

@@ -1,6 +1,7 @@
 """Evaluation harness for SkillMap. Import-only consumer of skillmap/."""
 
 from skillmap_eval.types import (
+    CorrectionAxis,
     Preference,
     PreferenceProfile,
     EvalTask,
@@ -10,11 +11,12 @@ from skillmap_eval.types import (
     CorrectionRateCurve,
     PreferenceRecoveryResult,
     GeneralizationResult,
-    CorrectnessSanity,
+    CorrectnessTrajectory,
     EvalReport,
 )
 
 __all__ = [
+    "CorrectionAxis",
     "Preference",
     "PreferenceProfile",
     "EvalTask",
@@ -24,6 +26,6 @@ __all__ = [
     "CorrectionRateCurve",
     "PreferenceRecoveryResult",
     "GeneralizationResult",
-    "CorrectnessSanity",
+    "CorrectnessTrajectory",
     "EvalReport",
 ]

@@ -1,4 +1,22 @@
-"""Stage B: consolidate CorrectionSummary buffer into Skill entries."""
+"""Stage B: consolidate CorrectionSummary buffer into Skill entries.
+
+Two-axis processing
+-------------------
+The buffer holds summaries from BOTH axes (preference and correctness).
+The consolidator splits the buffer by axis and runs the full Stage B
+pipeline (extract → dedup → reconcile) ONCE PER AXIS. Reconciliation and
+compaction also operate within an axis: a preference skill is never
+compared against, merged into, or replaced by a correctness skill (and
+vice versa). The two axes track different metrics and must remain
+independently inspectable.
+
+Per-axis MIN_SUPPORT
+--------------------
+The default MIN_SUPPORT is shared across axes for now, but the knob is
+per-axis so that correctness can be tightened (it carries a higher false-
+positive cost — a bad correctness skill nudges the model toward an
+incorrect "fix") without affecting preference recall.
+"""
 
 from __future__ import annotations
 
@@ -10,16 +28,29 @@ from pydantic import BaseModel
 
 from skillmap.llm.client import LLMClient, LLMConfig
 from skillmap.llm.prompts import (
+    AXIS_GUIDANCE_CORRECTNESS,
+    AXIS_GUIDANCE_PREFERENCE,
     SKILL_CANDIDATE_EXTRACTION_PROMPT,
     SKILL_COMPACTION_PROMPT,
     SKILL_DEDUP_PROMPT,
     SKILL_RECONCILIATION_PROMPT,
 )
 from skillmap.storage.skill_map import SkillMap
-from skillmap.types import CorrectionSummary, Skill
+from skillmap.types import CorrectionSummary, Skill, SkillAxis
 
 
-MIN_SUPPORT = 3
+# Per-axis MIN_SUPPORT. Correctness is held to the same bar as preference
+# by default; raise the correctness threshold if false-positive bug-class
+# skills become a problem in eval.
+MIN_SUPPORT_BY_AXIS: dict[SkillAxis, int] = {
+    "preference": 3,
+    "correctness": 3,
+}
+
+_AXIS_GUIDANCE: dict[SkillAxis, str] = {
+    "preference": AXIS_GUIDANCE_PREFERENCE,
+    "correctness": AXIS_GUIDANCE_CORRECTNESS,
+}
 
 
 # ---------------------------------------------------------------------------
@@ -94,25 +125,45 @@ class SkillConsolidator:
         self.retry_max = retry_max
 
     async def run(self, skill_map: SkillMap) -> None:
-        """Consume the full summary buffer and update skill_map in-place."""
+        """Consume the full summary buffer and update skill_map in-place.
+
+        Processes each axis independently — see module docstring.
+        """
         summaries = skill_map.get_pending_summaries()
         if not summaries:
             return
 
-        # Step 1: extract candidates from buffer
-        candidates = await self._extract_candidates(summaries)
+        by_axis: dict[SkillAxis, list[CorrectionSummary]] = {
+            "preference": [s for s in summaries if s.correction_type == "preference"],
+            "correctness": [s for s in summaries if s.correction_type == "correctness"],
+        }
+        for axis, axis_summaries in by_axis.items():
+            if axis_summaries:
+                await self._run_axis(skill_map, axis, axis_summaries)
+
+        skill_map.clear_summaries()
+
+    async def _run_axis(
+        self,
+        skill_map: SkillMap,
+        axis: SkillAxis,
+        summaries: list[CorrectionSummary],
+    ) -> None:
+        min_support = MIN_SUPPORT_BY_AXIS[axis]
+
+        # Step 1: extract candidates from this axis's slice of the buffer
+        candidates = await self._extract_candidates(axis, summaries, min_support)
         if not candidates:
-            skill_map.clear_summaries()
             return
 
         # Step 1b: merge near-duplicates within the batch
         if len(candidates) > 1:
-            candidates = await self._dedup_candidates(candidates)
+            candidates = await self._dedup_candidates(axis, candidates)
 
-        # Step 2: reconcile against existing skills
-        existing_skills = skill_map.list_skills()
-        if existing_skills:
-            decisions = await self._reconcile(candidates, existing_skills)
+        # Step 2: reconcile against existing skills OF THE SAME AXIS only
+        existing_axis_skills = [s for s in skill_map.list_skills() if s.axis == axis]
+        if existing_axis_skills:
+            decisions = await self._reconcile(axis, candidates, existing_axis_skills)
         else:
             decisions = [
                 {"proposed_index": i, "action": "add",
@@ -122,7 +173,7 @@ class SkillConsolidator:
 
         now = datetime.now(timezone.utc)
         summary_ids = {s.id for s in summaries}
-        existing_ids = {s.id for s in skill_map.list_skills()}
+        existing_axis_ids = {s.id for s in existing_axis_skills}
 
         for dec in decisions:
             idx = dec["proposed_index"] if isinstance(dec, dict) else dec.proposed_index
@@ -143,19 +194,23 @@ class SkillConsolidator:
                     (dec.get("updated_guidance") if isinstance(dec, dict) else dec.updated_guidance)
                     or cand.guidance
                 )
-                if existing_id and existing_id in existing_ids:
+                # Cross-axis updates are forbidden — guard against an LLM that
+                # somehow surfaced a different-axis id (shouldn't happen since
+                # we filter the catalog, but be defensive).
+                if existing_id and existing_id in existing_axis_ids:
                     new_ids = [sid for sid in cand.supporting_summary_ids if sid in summary_ids]
                     skill_map.update_skill(existing_id, new_guidance, new_ids)
 
             else:  # "add"
                 valid_ids = [sid for sid in cand.supporting_summary_ids if sid in summary_ids]
-                if len(valid_ids) < MIN_SUPPORT:
+                if len(valid_ids) < min_support:
                     continue
                 skill = Skill(
                     id=str(uuid.uuid4()),
                     title=cand.title,
                     catalog_trigger=cand.catalog_trigger,
                     guidance=cand.guidance,
+                    axis=axis,
                     support_count=len(valid_ids),
                     supporting_summary_ids=valid_ids,
                     created_at=now,
@@ -163,20 +218,30 @@ class SkillConsolidator:
                 )
                 skill_map.insert_skill(skill)
 
-        skill_map.clear_summaries()
-
     async def compact(self, skill_map: SkillMap) -> None:
-        """Full catalog compaction: merge overlapping or contradictory skills."""
-        skills = skill_map.list_skills()
-        if len(skills) <= 1:
+        """Per-axis catalog compaction: merge overlapping/contradictory skills."""
+        all_skills = skill_map.list_skills()
+        if len(all_skills) <= 1:
             return
 
+        for axis in ("preference", "correctness"):
+            axis_skills = [s for s in all_skills if s.axis == axis]
+            if len(axis_skills) <= 1:
+                continue
+            await self._compact_axis(skill_map, axis, axis_skills)
+
+    async def _compact_axis(
+        self,
+        skill_map: SkillMap,
+        axis: SkillAxis,
+        skills: list[Skill],
+    ) -> None:
         formatted = "\n\n".join(
             f"id: {s.id}\ntitle: {s.title!r}\ntrigger: {s.catalog_trigger!r}\n"
             f"guidance: {s.guidance!r}\nsupport_count: {s.support_count}"
             for s in skills
         )
-        prompt = SKILL_COMPACTION_PROMPT.format(skills=formatted)
+        prompt = SKILL_COMPACTION_PROMPT.format(axis=axis, skills=formatted)
 
         last_exc: Exception | None = None
         for _ in range(self.retry_max):
@@ -186,7 +251,9 @@ class SkillConsolidator:
                     response_schema=_CompactionResponse,
                 )
                 groups = raw.get("groups", [])
-                current_ids = {s.id for s in skill_map.list_skills()}
+                # Only this axis's ids are eligible — defend against an LLM
+                # that hallucinates an id from the other axis.
+                axis_ids = {s.id for s in skills}
 
                 for group in groups:
                     keep_id = group.get("keep_id") if isinstance(group, dict) else group.keep_id
@@ -195,9 +262,9 @@ class SkillConsolidator:
                     guidance = group.get("guidance") if isinstance(group, dict) else group.guidance
                     discard_ids = group.get("discard_ids", []) if isinstance(group, dict) else group.discard_ids
 
-                    if not keep_id or keep_id not in current_ids:
+                    if not keep_id or keep_id not in axis_ids:
                         continue
-                    valid_discards = [d for d in discard_ids if d != keep_id and d in current_ids]
+                    valid_discards = [d for d in discard_ids if d != keep_id and d in axis_ids]
                     try:
                         skill_map.merge_skill(
                             primary_id=keep_id,
@@ -206,25 +273,30 @@ class SkillConsolidator:
                             updated_guidance=guidance,
                             absorb_ids=valid_discards,
                         )
-                        current_ids -= set(valid_discards)
+                        axis_ids -= set(valid_discards)
                     except Exception as exc:
                         print(f"[compactor] merge failed for {keep_id}: {exc}")
                 return
             except Exception as exc:
                 last_exc = exc
-        print(f"[compactor] compaction failed after {self.retry_max} retries: {last_exc}")
+        print(f"[compactor:{axis}] compaction failed after {self.retry_max} retries: {last_exc}")
 
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
 
     async def _extract_candidates(
-        self, summaries: list[CorrectionSummary]
+        self,
+        axis: SkillAxis,
+        summaries: list[CorrectionSummary],
+        min_support: int,
     ) -> list[_CandidateItem]:
         formatted = _format_summaries(summaries)
         prompt = SKILL_CANDIDATE_EXTRACTION_PROMPT.format(
+            axis=axis,
+            axis_guidance=_AXIS_GUIDANCE[axis],
             summaries=formatted,
-            min_support=MIN_SUPPORT,
+            min_support=min_support,
         )
         last_exc: Exception | None = None
         for _ in range(self.retry_max):
@@ -236,17 +308,21 @@ class SkillConsolidator:
                 return [_CandidateItem(**c) for c in raw.get("candidates", [])]
             except Exception as exc:
                 last_exc = exc
-        raise RuntimeError(f"candidate extraction failed after retries: {last_exc}") from last_exc
+        raise RuntimeError(
+            f"candidate extraction failed (axis={axis}) after retries: {last_exc}"
+        ) from last_exc
 
     async def _dedup_candidates(
-        self, candidates: list[_CandidateItem]
+        self,
+        axis: SkillAxis,
+        candidates: list[_CandidateItem],
     ) -> list[_CandidateItem]:
         """Merge near-duplicate candidates within a single batch before reconciliation."""
         formatted = "\n".join(
             f"{i}. title={c.title!r} | trigger={c.catalog_trigger!r} | guidance={c.guidance!r}"
             for i, c in enumerate(candidates)
         )
-        prompt = SKILL_DEDUP_PROMPT.format(candidates=formatted)
+        prompt = SKILL_DEDUP_PROMPT.format(axis=axis, candidates=formatted)
 
         last_exc: Exception | None = None
         for _ in range(self.retry_max):
@@ -292,11 +368,12 @@ class SkillConsolidator:
                 last_exc = exc
 
         # Fallback: return original list unchanged
-        print(f"[consolidator] dedup failed, skipping: {last_exc}")
+        print(f"[consolidator:{axis}] dedup failed, skipping: {last_exc}")
         return candidates
 
     async def _reconcile(
         self,
+        axis: SkillAxis,
         candidates: list[_CandidateItem],
         existing_skills: list[Skill],
     ) -> list[dict]:
@@ -312,6 +389,7 @@ class SkillConsolidator:
             for i, c in enumerate(candidates)
         )
         prompt = SKILL_RECONCILIATION_PROMPT.format(
+            axis=axis,
             existing_catalog=catalog_text,
             proposed_skills=proposed_text,
         )
@@ -325,17 +403,22 @@ class SkillConsolidator:
                 return raw.get("decisions", [])
             except Exception as exc:
                 last_exc = exc
-        raise RuntimeError(f"reconciliation failed after retries: {last_exc}") from last_exc
+        raise RuntimeError(
+            f"reconciliation failed (axis={axis}) after retries: {last_exc}"
+        ) from last_exc
 
 
 def _format_summaries(summaries: list[CorrectionSummary]) -> str:
     parts = []
     for s in summaries:
-        parts.append(
+        block = (
             f"ID: {s.id}\n"
             f"  situation: {s.triggering_situation}\n"
             f"  wrong: {s.what_was_wrong}\n"
             f"  wanted: {s.what_user_wanted}\n"
             f"  quote: {s.correction_quote}"
         )
+        if s.correction_type == "correctness" and s.verification_evidence:
+            block += f"\n  evidence: {s.verification_evidence}"
+        parts.append(block)
     return "\n\n".join(parts)

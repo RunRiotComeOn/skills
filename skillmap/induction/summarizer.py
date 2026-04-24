@@ -18,6 +18,12 @@ class _SummaryItem(BaseModel):
     what_was_wrong: str
     what_user_wanted: str
     correction_quote: str
+    correction_type: str = "preference"  # "preference" | "correctness"
+    # Required (non-empty) when correction_type == "correctness".
+    # Names the in-trajectory evidence that the user's correction was right
+    # (e.g. "tests went 0/2 → 2/2 after fix"). The Stage A prompt enforces
+    # this; we drop correctness items lacking evidence as a safety net.
+    verification_evidence: str = ""
 
 
 class _SummaryResponse(BaseModel):
@@ -60,18 +66,28 @@ class CorrectionSummarizer:
                 )
                 items = raw.get("summaries", [])
                 now = datetime.now(timezone.utc)
-                return [
-                    CorrectionSummary(
-                        id=str(uuid.uuid4()),
-                        task_id=task_id,
-                        created_at=now,
-                        triggering_situation=item["triggering_situation"],
-                        what_was_wrong=item["what_was_wrong"],
-                        what_user_wanted=item["what_user_wanted"],
-                        correction_quote=item["correction_quote"],
+                summaries: list[CorrectionSummary] = []
+                for item in items:
+                    ctype = item.get("correction_type", "preference")
+                    evidence = (item.get("verification_evidence") or "").strip()
+                    # Safety net: a correctness summary with no evidence
+                    # cannot be safely promoted to a skill — drop it.
+                    if ctype == "correctness" and not evidence:
+                        continue
+                    summaries.append(
+                        CorrectionSummary(
+                            id=str(uuid.uuid4()),
+                            task_id=task_id,
+                            created_at=now,
+                            triggering_situation=item["triggering_situation"],
+                            what_was_wrong=item["what_was_wrong"],
+                            what_user_wanted=item["what_user_wanted"],
+                            correction_quote=item["correction_quote"],
+                            correction_type=ctype,
+                            verification_evidence=evidence,
+                        )
                     )
-                    for item in items
-                ]
+                return summaries
             except Exception as exc:
                 last_exc = exc
         raise RuntimeError(f"summarizer failed after retries: {last_exc}") from last_exc

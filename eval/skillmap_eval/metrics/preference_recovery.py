@@ -1,7 +1,9 @@
-"""Metric 2: preference recovery (SkillMap condition only).
+"""Metric: preference recovery (SkillMap condition, preference-axis only).
 
-LLM-as-judge: for each ground-truth preference, ask whether any induced
-skill captures it.
+LLM-as-judge: for each ground-truth preference in the user profile, ask
+whether any induced PREFERENCE-AXIS skill captures it. Correctness-axis
+skills are excluded — they live on the other learning channel and are
+not expected to map onto preferences.
 """
 
 from __future__ import annotations
@@ -89,11 +91,12 @@ class PreferenceRecoveryJudge:
     def _render_candidates(skills: list[Skill]) -> str:
         lines: list[str] = []
         for s in skills:
-            if s.status == "deprecated":
+            # Preference recovery only judges preference-axis skills.
+            if s.axis != "preference":
                 continue
             lines.append(
-                f"- {s.id}: {s.name}\n"
-                f"    triggering_context: {s.triggering_context}\n"
-                f"    correction_target: {s.correction_target}"
+                f"- {s.id}: {s.title}\n"
+                f"    trigger: {s.catalog_trigger}\n"
+                f"    guidance: {s.guidance}"
             )
         return "\n".join(lines)

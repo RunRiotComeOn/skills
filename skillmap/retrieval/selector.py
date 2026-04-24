@@ -42,7 +42,11 @@ class CatalogSelector:
         task_description: str,
         skill_map: SkillMap,
     ) -> list[Skill]:
-        """Return ≤ MAX_SKILLS_PER_TASK skills relevant to task_description."""
+        """Return ≤ MAX_SKILLS_PER_TASK skills relevant to task_description.
+
+        The catalog is rendered with axis labels so the selector LLM can
+        balance preference vs correctness picks.
+        """
         catalog = skill_map.get_catalog()
         if not catalog:
             return []
@@ -51,6 +55,7 @@ class CatalogSelector:
         prompt = CATALOG_SELECTOR_PROMPT.format(
             task=task_description,
             catalog=catalog_text,
+            max_skills=MAX_SKILLS_PER_TASK,
         )
 
         last_exc: Exception | None = None
@@ -76,6 +81,6 @@ class CatalogSelector:
 
 def _render_catalog(catalog: list[CatalogEntry]) -> str:
     return "\n".join(
-        f"[{e.id}] {e.title}\n  trigger: {e.catalog_trigger}"
+        f"[{e.axis}] [{e.id}] {e.title}\n  trigger: {e.catalog_trigger}"
         for e in catalog
     )

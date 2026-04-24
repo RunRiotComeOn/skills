@@ -30,7 +30,7 @@ class Assistant:
         if not skills:
             return base
         skills_block = "\n".join(
-            f"{i+1}. {s.title}\n"
+            f"{i+1}. [{s.axis}] {s.title}\n"
             f"   When: {s.catalog_trigger}\n"
             f"   Do: {s.guidance}"
             for i, s in enumerate(skills)

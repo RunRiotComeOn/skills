@@ -123,7 +123,12 @@ class SkillMap:
 
     def _rebuild_catalog(self) -> None:
         self._state.catalog = [
-            CatalogEntry(id=s.id, title=s.title, catalog_trigger=s.catalog_trigger)
+            CatalogEntry(
+                id=s.id,
+                title=s.title,
+                catalog_trigger=s.catalog_trigger,
+                axis=s.axis,
+            )
             for s in sorted(
                 self._state.skills.values(),
                 key=lambda s: s.support_count,

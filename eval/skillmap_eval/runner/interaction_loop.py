@@ -16,11 +16,15 @@ Order of operations per task:
 from __future__ import annotations
 
 from skillmap_eval.conditions.base import Condition
-from skillmap_eval.metrics.correctness_sanity import run_sanity_check_for_task
+from skillmap_eval.metrics.correctness_sanity import (
+    format_test_results_for_llm,
+    run_sanity_check_for_task,
+)
 from skillmap_eval.simulator.user_simulator import UserSimulator
 from skillmap_eval.types import (
     CompletionReason,
     ConditionName,
+    CorrectionAxis,
     EvalTask,
     SimulatedTurn,
     TaskInteraction,
@@ -48,6 +52,7 @@ class InteractionLoop:
         user_msg = initial_user_msg
         completion: CompletionReason = "max_turns_exceeded"
         violated_latest: list[str] = []
+        axes_latest: list[CorrectionAxis] = []
 
         # We treat "one turn" as one (user -> assistant -> user-reaction) cycle.
         for turn_idx in range(self.max_turns):
@@ -57,6 +62,7 @@ class InteractionLoop:
                     role="user",
                     content=user_msg,
                     triggered_preferences=violated_latest if turn_idx > 0 else [],
+                    correction_axes=axes_latest if turn_idx > 0 else [],
                 )
             )
             # 2a. Assistant response.
@@ -68,11 +74,21 @@ class InteractionLoop:
             if turn_idx == 0:
                 retrieved_ids_at_start = list(retrieved)
 
-            # 2b. Simulator reacts.
-            reply, violated, action = await simulator.respond_to_assistant(
+            # 2b. Run tests on this response (best-effort, never raises).
+            test_results_str = ""
+            try:
+                test_results_str = format_test_results_for_llm(
+                    task, assistant_msg, max_cases=2, timeout_s=5.0
+                )
+            except Exception:
+                pass
+
+            # 2c. Simulator reacts (with optional test results context).
+            reply, violated, axes, action = await simulator.respond_to_assistant(
                 task=task,
                 conversation_so_far=turns,
                 latest_assistant_message=assistant_msg,
+                test_results=test_results_str,
             )
 
             # Record assistant turn with violated prefs attached.
@@ -87,14 +103,25 @@ class InteractionLoop:
             if action == "accept":
                 if reply:
                     turns.append(
-                        SimulatedTurn(role="user", content=reply, triggered_preferences=[])
+                        SimulatedTurn(
+                            role="user",
+                            content=reply,
+                            triggered_preferences=[],
+                            correction_axes=[],
+                        )
                     )
                 completion = "user_accepted"
                 break
             if action == "give_up":
                 if reply:
                     turns.append(
-                        SimulatedTurn(role="user", content=reply, triggered_preferences=violated)
+                        SimulatedTurn(
+                            role="user",
+                            content=reply,
+                            triggered_preferences=violated,
+                            # give_up is not itself a correction; leave axes empty
+                            correction_axes=[],
+                        )
                     )
                 completion = "user_gave_up"
                 break
@@ -102,9 +129,21 @@ class InteractionLoop:
             # action == "correct": set up the next iteration.
             user_msg = reply
             violated_latest = violated
+            axes_latest = axes
 
+        # Per-axis counters. A correction tagged with both axes increments
+        # both counters, so the two can sum to MORE than correction_count.
+        preference_correction_count = sum(
+            1 for t in turns
+            if t.role == "user" and "preference" in t.correction_axes
+        )
+        correctness_correction_count = sum(
+            1 for t in turns
+            if t.role == "user" and "correctness" in t.correction_axes
+        )
+        # Total = number of user turns that carried any correction axis.
         correction_count = sum(
-            1 for t in turns if t.role == "user" and t.triggered_preferences
+            1 for t in turns if t.role == "user" and t.correction_axes
         )
 
         # 4. Sanity check (best-effort; never raises).
@@ -128,6 +167,8 @@ class InteractionLoop:
             task_index_in_stream=task_index,
             turns=turns,
             correction_count=correction_count,
+            preference_correction_count=preference_correction_count,
+            correctness_correction_count=correctness_correction_count,
             completion_reason=completion,
             test_case_pass_rate=pass_rate,
             retrieved_skill_ids_at_start=retrieved_ids_at_start,

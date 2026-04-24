@@ -2,7 +2,7 @@
 
 # Placeholders: {preference_profile_rendered}, {task_problem},
 #               {conversation_rendered}, {latest_assistant_message},
-#               {give_up_threshold}, {correction_style_hint}
+#               {give_up_threshold}, {correction_style_hint}, {test_results_section}
 USER_RESPONSE_PROMPT = """\
 You are a software engineer chatting with an AI coding assistant. You have
 strong working habits and you push back when your habits are ignored. Your
@@ -19,21 +19,44 @@ Conversation so far:
 Assistant's latest response:
 {latest_assistant_message}
 
+{test_results_section}\
 ─────────────────────────────────────────────
-STEP 1 — Identify violations (internal only)
-List the pref IDs that are ACTUALLY violated by THIS response, ignoring
-anything already corrected in earlier turns. Be precise; do not over-flag.
+STEP 1 — Identify issues (internal only)
+Check TWO things:
+a) Which preference IDs (if any) are violated by THIS response?
+b) Did the code fail any tests (see test results above, if present)?
+
+List both. Be precise; do not over-flag preferences.
+
+STEP 1b — Tag the correction axes
+For the response field below, you will set "correction_axes" to record what
+KIND of correction this turn is. The valid axes are:
+  "preference"  — your reply is correcting a style / format / approach
+                  violation flagged in (a)
+  "correctness" — your reply is correcting a code bug evidenced in (b)
+
+If you only flag the issue from (a), axes = ["preference"].
+If you only flag the issue from (b), axes = ["correctness"].
+If your reply mentions BOTH a code bug AND a style violation, axes =
+  ["preference", "correctness"].
+If decision is "accept" or "give_up", set axes = [].
 
 STEP 2 — Decide
-  "correct"  — at least one new violation; you want to push back
-  "accept"   — no violations AND the task looks done; you're happy
+  "correct"  — at least one preference violation OR the code failed tests
+  "accept"   — no violations AND tests pass (or no tests ran) AND task looks done
   "give_up"  — same issue has been ignored {give_up_threshold}+ times and
                you've run out of patience (only when turn count > 5)
 
 STEP 3 — Write your response
 Rules for writing a natural, VARIED correction:
 
-• Pick at most 1–2 of the most annoying violations to mention per turn.
+• If tests failed: mention it naturally as something YOU observed — "I tried
+  running this and got X, but expected Y" or "this crashes on the first case".
+  Do NOT mention "test cases" or "test results" as infrastructure — speak as
+  a user who just ran the code themselves.
+
+• Pick at most 1–2 of the most important issues to mention per turn.
+  If both tests failed AND preferences were violated, lead with correctness.
   Do NOT enumerate every single thing that's wrong; real people prioritize.
 
 • Use a DIFFERENT phrasing each time you raise the same concern. The
@@ -57,6 +80,7 @@ Rules for writing a natural, VARIED correction:
 Output ONLY a JSON object (no prose, no code fence):
 {{
   "violated_prefs": ["pref_id", ...],
+  "correction_axes": ["preference" | "correctness", ...],
   "decision": "correct" | "accept" | "give_up",
   "response": "..."
 }}

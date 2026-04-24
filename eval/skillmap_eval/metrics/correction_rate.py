@@ -1,4 +1,11 @@
-"""Metric 1: correction-rate decay curve over the task stream."""
+"""Per-axis correction-rate decay curves over the task stream.
+
+This is the PRIMARY metric for the preference-skill axis (and a useful
+secondary metric for the correctness-skill axis). For an effective
+SkillMap, all three series should bend down across the stream, with the
+preference series bending fastest because preference skills are the most
+directly applicable to a "next response" check.
+"""
 
 from __future__ import annotations
 
@@ -6,18 +13,24 @@ from skillmap_eval.types import (
     CorrectionRateCurve,
     ConditionName,
     StreamRun,
+    TaskInteraction,
 )
 
 
 def compute_correction_curve(run: StreamRun, window: int = 3) -> CorrectionRateCurve:
     indices = list(range(len(run.interactions)))
-    counts = [i.correction_count for i in run.interactions]
-    rolling = _rolling_mean(counts, window)
+    total = [i.correction_count for i in run.interactions]
+    pref = [i.preference_correction_count for i in run.interactions]
+    corr = [i.correctness_correction_count for i in run.interactions]
     return CorrectionRateCurve(
         condition_name=_cast(run.condition_name),
         task_indices=indices,
-        corrections_per_task=counts,
-        rolling_mean_window_3=rolling,
+        total_per_task=total,
+        preference_per_task=pref,
+        correctness_per_task=corr,
+        rolling_mean_window_3_total=_rolling_mean(total, window),
+        rolling_mean_window_3_preference=_rolling_mean(pref, window),
+        rolling_mean_window_3_correctness=_rolling_mean(corr, window),
     )
 
 

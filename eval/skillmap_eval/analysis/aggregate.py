@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 
 from skillmap_eval.metrics import (
     compute_correction_curve,
-    compute_correctness_sanity,
+    compute_correctness_trajectory,
     compute_generalization,
 )
 from skillmap_eval.types import (
@@ -27,5 +27,5 @@ def aggregate_runs(
         correction_curves=[compute_correction_curve(r) for r in runs],
         preference_recovery=preference_recovery,
         generalization=[compute_generalization(r) for r in runs],
-        correctness_sanity=[compute_correctness_sanity(r) for r in runs],
+        correctness_trajectory=[compute_correctness_trajectory(r) for r in runs],
     )
