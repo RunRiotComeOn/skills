@@ -161,6 +161,21 @@ class InteractionLoop:
         except Exception:
             pass_rate = None
 
+        # Preference acceptance rate on the FINAL assistant turn — the
+        # preference-axis analogue of test_case_pass_rate.
+        acceptance_rate: float | None = None
+        total_prefs = len(simulator.profile.preferences)
+        if total_prefs > 0:
+            last_assistant_turn = next(
+                (t for t in reversed(turns) if t.role == "assistant"), None
+            )
+            if last_assistant_turn is not None:
+                violated = {
+                    pid for pid in last_assistant_turn.violated_preferences
+                    if pid in {p.id for p in simulator.profile.preferences}
+                }
+                acceptance_rate = (total_prefs - len(violated)) / total_prefs
+
         interaction = TaskInteraction(
             task_id=task.task_id,
             condition_name=_cast_condition_name(condition.name),
@@ -171,6 +186,7 @@ class InteractionLoop:
             correctness_correction_count=correctness_correction_count,
             completion_reason=completion,
             test_case_pass_rate=pass_rate,
+            preference_acceptance_rate=acceptance_rate,
             retrieved_skill_ids_at_start=retrieved_ids_at_start,
         )
 

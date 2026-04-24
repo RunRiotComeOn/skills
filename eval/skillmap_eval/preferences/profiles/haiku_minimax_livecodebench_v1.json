@@ -1,0 +1,78 @@
+{
+  "profile_id": "haiku_minimax_livecodebench_v1",
+  "generator_model": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
+  "task_type": "python_coding",
+  "preferences": [
+    {
+      "id": "pref_01",
+      "description": "I want you to always state the time and space complexity of your solution before writing any code, using Big O notation explicitly.",
+      "priority": 1,
+      "expected_correction_trigger": "Before you write the code, please analyze and state the time and space complexity of your approach.",
+      "category": "communication_style"
+    },
+    {
+      "id": "pref_02",
+      "description": "I dislike solutions that use recursion when an iterative approach is feasible; always prefer iteration over recursion unless the problem explicitly requires it.",
+      "priority": 2,
+      "expected_correction_trigger": "This recursive solution could be rewritten iteratively. Please refactor to use a loop instead.",
+      "category": "code_style"
+    },
+    {
+      "id": "pref_03",
+      "description": "I want you to explicitly walk through at least one concrete example from the problem statement, showing variable states at each step, before presenting the final code.",
+      "priority": 3,
+      "expected_correction_trigger": "Can you trace through the first example step-by-step, showing how your algorithm processes each element?",
+      "category": "diagnostic_approach"
+    },
+    {
+      "id": "pref_04",
+      "description": "I dislike nested list comprehensions with more than one for clause; break them into explicit loops or intermediate variables for readability.",
+      "priority": 4,
+      "expected_correction_trigger": "This nested list comprehension is hard to follow. Please rewrite it using explicit loops or intermediate variables.",
+      "category": "code_style"
+    },
+    {
+      "id": "pref_05",
+      "description": "I want you to identify and name the core algorithmic insight or pattern (e.g., 'sliding window', 'dynamic programming', 'number theory') before explaining the solution.",
+      "priority": 5,
+      "expected_correction_trigger": "What is the key algorithmic pattern or insight that makes this problem tractable? Please name it explicitly.",
+      "category": "communication_style"
+    },
+    {
+      "id": "pref_06",
+      "description": "I want you to always validate edge cases (empty input, single element, maximum constraints) and explicitly mention which ones your solution handles.",
+      "priority": 6,
+      "expected_correction_trigger": "Please discuss how your solution handles edge cases like N=1, N=10^18, or empty arrays.",
+      "category": "diagnostic_approach"
+    },
+    {
+      "id": "pref_07",
+      "description": "I dislike magic numbers in code; all numeric constants should be assigned to named variables with clear semantic meaning.",
+      "priority": 7,
+      "expected_correction_trigger": "This code has magic numbers. Please extract them into named constants that explain their purpose.",
+      "category": "code_style"
+    },
+    {
+      "id": "pref_08",
+      "description": "I want you to explain why a naive or brute-force approach would fail or be inefficient before presenting the optimized solution.",
+      "priority": 8,
+      "expected_correction_trigger": "What would go wrong with a brute-force approach here? Why is your optimized solution necessary?",
+      "category": "diagnostic_approach"
+    },
+    {
+      "id": "pref_09",
+      "description": "I want you to use descriptive variable names that reflect the problem domain (e.g., 'subarray_count' instead of 'cnt', 'good_integers' instead of 'res').",
+      "priority": 9,
+      "expected_correction_trigger": "Your variable names are too abbreviated. Please use more descriptive names that clarify what each variable represents.",
+      "category": "code_style"
+    },
+    {
+      "id": "pref_10",
+      "description": "I dislike solutions that rely on external libraries or built-in functions without first explaining what they do and why they're appropriate for this problem.",
+      "priority": 10,
+      "expected_correction_trigger": "Before using that library function, please explain what it does and why it's the right choice here.",
+      "category": "tool_usage"
+    }
+  ],
+  "created_at": "2026-04-24T17:24:40.362014Z"
+}

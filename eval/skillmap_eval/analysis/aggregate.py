@@ -8,6 +8,7 @@ from skillmap_eval.metrics import (
     compute_correction_curve,
     compute_correctness_trajectory,
     compute_generalization,
+    compute_preference_trajectory,
 )
 from skillmap_eval.types import (
     EvalReport,
@@ -28,4 +29,5 @@ def aggregate_runs(
         preference_recovery=preference_recovery,
         generalization=[compute_generalization(r) for r in runs],
         correctness_trajectory=[compute_correctness_trajectory(r) for r in runs],
+        preference_trajectory=[compute_preference_trajectory(r) for r in runs],
     )

@@ -37,6 +37,7 @@ def make_all_figures(report: EvalReport, out_dir: Path | str) -> dict[str, Path]
     paths["preference_recovery_bar"] = _plot_preference_recovery(report, out)
     paths["generalization_comparison"] = _plot_generalization(report, out)
     paths["correctness_trajectory"] = _plot_correctness_trajectory(report, out)
+    paths["preference_trajectory"] = _plot_preference_trajectory(report, out)
     return paths
 
 
@@ -128,6 +129,31 @@ def _plot_correctness_trajectory(report: EvalReport, out: Path) -> Path:
     ax.set_title("Correctness trajectory (early vs late vs held-out)")
     ax.legend()
     path = out / "correctness_trajectory.png"
+    fig.tight_layout()
+    fig.savefig(path, dpi=150)
+    plt.close(fig)
+    return path
+
+
+def _plot_preference_trajectory(report: EvalReport, out: Path) -> Path:
+    """Bar chart: early vs late vs held-out average preference acceptance rate."""
+    fig, ax = plt.subplots(figsize=(8, 5))
+    names = [r.condition_name for r in report.preference_trajectory]
+    early = [r.avg_acceptance_rate_early for r in report.preference_trajectory]
+    late = [r.avg_acceptance_rate_late for r in report.preference_trajectory]
+    held = [r.avg_acceptance_rate_held_out for r in report.preference_trajectory]
+    x = list(range(len(names)))
+    width = 0.27
+    ax.bar([i - width for i in x], early, width=width, label="early stream", color="#cccccc")
+    ax.bar(x, late, width=width, label="late stream", color="#3366cc")
+    ax.bar([i + width for i in x], held, width=width, label="held-out", color="#666666")
+    ax.set_xticks(x)
+    ax.set_xticklabels(names)
+    ax.set_ylim(0.0, 1.0)
+    ax.set_ylabel("avg preference acceptance rate")
+    ax.set_title("Preference trajectory (early vs late vs held-out)")
+    ax.legend()
+    path = out / "preference_trajectory.png"
     fig.tight_layout()
     fig.savefig(path, dpi=150)
     plt.close(fig)

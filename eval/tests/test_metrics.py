@@ -14,6 +14,9 @@ from skillmap_eval.metrics.correctness_sanity import (
     run_sanity_check_for_task,
 )
 from skillmap_eval.metrics.generalization import compute_generalization
+from skillmap_eval.metrics.preference_acceptance import (
+    compute_preference_trajectory,
+)
 from skillmap_eval.types import (
     EvalTask,
     StreamRun,
@@ -29,6 +32,7 @@ def _make_interaction(
     is_held_out: bool = False,
     pref_count: int | None = None,
     corr_count: int | None = None,
+    acceptance_rate: float | None = 1.0,
 ) -> TaskInteraction:
     # By default, attribute the whole correction_count to the preference axis
     # so legacy tests keep their original semantics.
@@ -44,6 +48,7 @@ def _make_interaction(
         correctness_correction_count=c,
         completion_reason=completion,  # type: ignore[arg-type]
         test_case_pass_rate=pass_rate,
+        preference_acceptance_rate=acceptance_rate,
         retrieved_skill_ids_at_start=[],
     )
 
@@ -99,6 +104,57 @@ def test_correctness_trajectory_averages_pass_rates() -> None:
     assert t.avg_pass_rate_late == 1.0
     assert t.avg_pass_rate_held_out == 1.0
     assert t.task_completion_rate == 1.0
+
+
+def test_preference_trajectory_averages_acceptance_rates() -> None:
+    # Construct a stream where late-half acceptance is higher than early-half,
+    # mirroring the success case for SkillMap on the preference axis.
+    run = StreamRun(
+        run_id="r1",
+        profile_id="p1",
+        condition_name="skillmap",
+        task_stream=["t0", "t1", "t2", "t3"],
+        held_out_task_ids=["h0", "h1"],
+        interactions=[
+            _make_interaction(0, 0, acceptance_rate=0.5),
+            _make_interaction(1, 0, acceptance_rate=0.5),
+            _make_interaction(2, 0, acceptance_rate=1.0),
+            _make_interaction(3, 0, acceptance_rate=1.0),
+        ],
+        held_out_interactions=[
+            _make_interaction(0, 0, acceptance_rate=0.75, is_held_out=True),
+            _make_interaction(1, 0, acceptance_rate=0.75, is_held_out=True),
+        ],
+        started_at=datetime.now(timezone.utc),
+    )
+    t = compute_preference_trajectory(run)
+    assert t.avg_acceptance_rate_early == 0.5
+    assert t.avg_acceptance_rate_late == 1.0
+    assert t.avg_acceptance_rate_held_out == 0.75
+
+
+def test_preference_trajectory_drops_none_rates() -> None:
+    # Tasks with acceptance_rate=None (e.g., empty profile) are dropped, not
+    # treated as 0.0.
+    run = StreamRun(
+        run_id="r1",
+        profile_id="p1",
+        condition_name="stateless",
+        task_stream=["t0", "t1"],
+        held_out_task_ids=[],
+        interactions=[
+            _make_interaction(0, 0, acceptance_rate=None),
+            _make_interaction(1, 0, acceptance_rate=0.4),
+        ],
+        held_out_interactions=[],
+        started_at=datetime.now(timezone.utc),
+    )
+    t = compute_preference_trajectory(run)
+    # Early window (first half) is just t0 with None → mean over empty → 0.0.
+    assert t.avg_acceptance_rate_early == 0.0
+    # Late window is t1 with 0.4.
+    assert t.avg_acceptance_rate_late == 0.4
+    assert t.avg_acceptance_rate_held_out == 0.0
 
 
 def test_extract_python_code_from_fenced_block() -> None:

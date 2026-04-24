@@ -101,6 +101,12 @@ class TaskInteraction(BaseModel):
     correctness_correction_count: int = 0
     completion_reason: CompletionReason
     test_case_pass_rate: Optional[float] = None
+    # Fraction of profile preferences NOT violated in the FINAL assistant
+    # turn of the task. Parallel to test_case_pass_rate on the preference
+    # axis: 1.0 means the delivered response respected every preference,
+    # 0.0 means it violated all of them. None when there is no assistant
+    # turn or the profile has no preferences.
+    preference_acceptance_rate: Optional[float] = None
     retrieved_skill_ids_at_start: list[str] = Field(default_factory=list)
 
 
@@ -188,6 +194,22 @@ class CorrectnessTrajectory(BaseModel):
     task_completion_rate: float
 
 
+class PreferenceTrajectory(BaseModel):
+    """Primary outcome metric for the PREFERENCE-skill axis.
+
+    Mirrors CorrectnessTrajectory: averages the per-task preference
+    acceptance rate (fraction of profile preferences not violated by the
+    final assistant turn) across the EARLY half of the stream, the LATE
+    half, and the held-out set. A SkillMap that successfully induces
+    preference-axis skills should show late > early; stateless should
+    be roughly flat. Held-out is the cleanest generalization signal.
+    """
+    condition_name: ConditionName
+    avg_acceptance_rate_early: float
+    avg_acceptance_rate_late: float
+    avg_acceptance_rate_held_out: float
+
+
 class EvalReport(BaseModel):
     profile_id: str
     completed_at: datetime
@@ -195,3 +217,4 @@ class EvalReport(BaseModel):
     preference_recovery: list[PreferenceRecoveryResult]
     generalization: list[GeneralizationResult]
     correctness_trajectory: list[CorrectnessTrajectory]
+    preference_trajectory: list[PreferenceTrajectory] = Field(default_factory=list)
