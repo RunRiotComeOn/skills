@@ -35,19 +35,70 @@ def compute_preference_trajectory(run: StreamRun) -> PreferenceTrajectory:
 
     return PreferenceTrajectory(
         condition_name=_cast(run.condition_name),
-        avg_acceptance_rate_early=_mean_acceptance(early),
-        avg_acceptance_rate_late=_mean_acceptance(late),
-        avg_acceptance_rate_held_out=_mean_acceptance(held_out),
+        avg_acceptance_rate_early=mean_preference_acceptance_rate(early)[0],
+        avg_acceptance_rate_late=mean_preference_acceptance_rate(late)[0],
+        avg_acceptance_rate_held_out=mean_preference_acceptance_rate(held_out)[0],
     )
 
 
-def _mean_acceptance(interactions: list[TaskInteraction]) -> float:
+def mean_preference_acceptance_rate(
+    interactions: list[TaskInteraction],
+) -> tuple[float, int]:
+    """Average preference_acceptance_rate over a list of interactions.
+
+    Tasks with `preference_acceptance_rate is None` (no assistant turn,
+    or empty preference profile) are dropped — counted via the second
+    element of the returned tuple.
+    """
     rates = [
         i.preference_acceptance_rate
         for i in interactions
         if i.preference_acceptance_rate is not None
     ]
-    return (sum(rates) / len(rates)) if rates else 0.0
+    return ((sum(rates) / len(rates)) if rates else 0.0, len(rates))
+
+
+def mean_first_turn_preference_acceptance_rate(
+    interactions: list[TaskInteraction],
+) -> tuple[float, int]:
+    """Average first_turn_preference_acceptance_rate over interactions.
+
+    This is the "did the model get it right on the first try" metric. It
+    is the one that should actually move when memory is doing its job —
+    the legacy `preference_acceptance_rate` (final assistant turn) tends
+    to saturate near 1.0 because the model almost always recovers after
+    a correction or two.
+
+    Tasks with a None rate are dropped; the second tuple element reports
+    how many interactions contributed.
+    """
+    rates = [
+        i.first_turn_preference_acceptance_rate
+        for i in interactions
+        if i.first_turn_preference_acceptance_rate is not None
+    ]
+    return ((sum(rates) / len(rates)) if rates else 0.0, len(rates))
+
+
+def mean_first_turn_preference_violation_count(
+    interactions: list[TaskInteraction],
+) -> tuple[float, int]:
+    """Average count of preferences violated in the first assistant turn.
+
+    Mirror of `mean_first_turn_preference_acceptance_rate` in absolute
+    units. Useful when feeding into a rolling-mean stream curve, where a
+    fraction can wash out (the profile size is fixed) and an integer
+    count preserves the shape of the decay.
+    """
+    counts = [
+        i.first_turn_preference_violation_count
+        for i in interactions
+        if i.first_turn_preference_violation_count is not None
+    ]
+    return (
+        (sum(counts) / len(counts)) if counts else 0.0,
+        len(counts),
+    )
 
 
 def _cast(name: str) -> ConditionName:

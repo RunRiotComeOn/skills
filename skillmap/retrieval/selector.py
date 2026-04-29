@@ -1,4 +1,4 @@
-"""Stage C: select ≤ 2 skills from catalog for the current task."""
+"""Stage C: select ≤ 5 skills from catalog for the current task."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from skillmap.storage.skill_map import SkillMap
 from skillmap.types import CatalogEntry, Skill
 
 
-MAX_SKILLS_PER_TASK = 2
+MAX_SKILLS_PER_TASK = 5
 
 
 class _SelectorResponse(BaseModel):
@@ -31,7 +31,7 @@ class CatalogSelector:
                 provider="bedrock",
                 model=llm_model,
                 region=region,
-                max_tokens=128,
+                max_tokens=256,
                 extra_inference={"temperature": 0.0},
             )
         )

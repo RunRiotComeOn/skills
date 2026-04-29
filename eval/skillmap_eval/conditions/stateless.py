@@ -6,6 +6,7 @@ from skillmap.llm.client import LLMClient, LLMConfig
 
 from skillmap_eval.conditions.base import (
     SYSTEM_PROMPT_BASE,
+    format_task_hint,
     render_conversation_for_llm_b,
 )
 from skillmap_eval.types import EvalTask, SimulatedTurn, TaskInteraction
@@ -39,7 +40,11 @@ class StatelessCondition:
         user_message: str,
     ) -> tuple[str, list[str]]:
         messages = render_conversation_for_llm_b(conversation_so_far, user_message)
-        text = await self._client.call(messages=messages, system=SYSTEM_PROMPT_BASE)
+        system = SYSTEM_PROMPT_BASE
+        hint = format_task_hint(task)
+        if hint:
+            system = f"{system}\n\n{hint}"
+        text = await self._client.call(messages=messages, system=system)
         return (text if isinstance(text, str) else str(text)), []
 
     async def finalize_task(

@@ -143,19 +143,58 @@ Each skill must pass: "What concrete assistant mistake does this prevent?"
 Do NOT create skills that are tied to a single task. Do NOT create skills
 that mix this axis with the other axis (you will only see one axis here).
 
+──────────────────────────────────────────────────────────────────────────────
+GRANULARITY RULES — EACH SKILL = ONE HABIT (HARD CONSTRAINTS)
+──────────────────────────────────────────────────────────────────────────────
+A skill is the smallest checkable habit you can describe in one sentence.
+NEVER bundle multiple distinct habits into one skill, even when they all
+appeared in the same correction turn. If summaries cover several habits,
+emit ONE candidate per habit; reuse the same supporting_summary_id across
+multiple candidates whenever a single summary evidences multiple habits.
+
+Treat the following as DIFFERENT habits and emit them as SEPARATE skills:
+  - stating time/space complexity upfront
+  - naming the algorithmic pattern / core insight
+  - explaining why the brute-force / naive approach fails
+  - tracing through a concrete example with variable states
+  - using descriptive variable names
+  - extracting magic numbers into named constants
+  - explaining library / data-structure choices
+  - addressing edge cases / boundary values
+  - preferring iteration over recursion
+  - any specific verification check (e.g. re-run trace, test on empty input)
+
+HARD CAPS (a candidate violating either is invalid and must be split):
+  - title ≤ 8 words.
+  - guidance ≤ 60 words, ONE sentence ideally, two short sentences max.
+  - guidance must describe ONE habit. If it contains conjunctions like
+    "and also", "plus", "as well as", or enumerations of independent
+    habits, SPLIT it.
+
+If you find yourself writing "do X, and Y, and Z", that is THREE skills,
+not one — emit three candidates.
+
 Return ONLY a JSON object:
 {{
   "candidates": [
     {{
-      "title": "State Complexity Before Writing Code",
-      "catalog_trigger": "when solving any algorithmic or implementation problem",
+      "title": "State Complexity Upfront",
+      "catalog_trigger": "when presenting any algorithmic solution",
       "guidance": "Before writing code, state time and space complexity in Big-O with a one-sentence justification.",
       "supporting_summary_ids": ["id1", "id3", "id7"]
+    }},
+    {{
+      "title": "Name the Algorithmic Pattern",
+      "catalog_trigger": "when presenting any algorithmic solution",
+      "guidance": "Explicitly name the core algorithmic pattern (e.g. sliding window, DP, greedy) before showing code.",
+      "supporting_summary_ids": ["id1", "id4"]
     }}
   ]
 }}
 
 Each supporting_summary_id MUST be an exact ID from the summaries below.
+A single summary id MAY appear under multiple candidates when that summary
+genuinely evidences multiple distinct habits.
 
 Correction summaries (all axis = {axis}):
 {summaries}
@@ -191,13 +230,30 @@ You are given a list of candidate behavioral skills, all of axis "{axis}",
 extracted from the same set of corrections. Some candidates may address
 essentially the same assistant mistake — just worded differently.
 
-Merge near-duplicate candidates into one richer skill. Two candidates are
-near-duplicates if:
-  • Their guidance would prevent the SAME concrete assistant mistake, OR
-  • One is a narrower special case of the other.
+DEFAULT BIAS: KEEP CANDIDATES SEPARATE. Each skill represents ONE habit.
+Merge ONLY when two candidates target the SAME habit phrased differently
+(e.g. "name the pattern first" vs "identify the algorithmic approach
+upfront"). Do NOT merge candidates that cover DIFFERENT habits even if:
+  • they share supporting summaries (one correction can evidence many habits),
+  • they often co-occur in the same task,
+  • they would both fire in the same situation,
+  • merging would produce shorter output.
 
-For each merged group: write the best unified title, trigger, and guidance.
-Include ALL candidates, whether merged or kept alone.
+The following are DIFFERENT habits and MUST stay separate:
+  - complexity statement vs algorithmic-pattern naming
+  - brute-force-failure explanation vs example trace
+  - descriptive variable names vs extracting magic numbers
+  - edge-case enumeration vs verification of a specific edge case
+  - any pair of items from the granularity list in the extraction prompt.
+
+For genuinely-merged groups: write the best unified title, trigger, and
+guidance. The merged guidance MUST still satisfy the same hard caps as the
+extraction prompt (title ≤ 8 words, guidance ≤ 60 words, ONE habit). If a
+merge would force the output above 60 words or to cover multiple habits,
+DO NOT MERGE.
+
+Include ALL candidates, whether merged or kept alone (singletons are fine
+and preferred when in doubt).
 
 Return ONLY a JSON object:
 {{
@@ -228,24 +284,35 @@ You reconcile newly proposed skills (axis = "{axis}") against the existing
 skill library OF THE SAME AXIS. Skills of a different axis are NOT shown
 and MUST NOT be considered as candidates for merge.
 
-DEFAULT BIAS: discard unless there is a clear reason to add or update.
+DEFAULT BIAS: discard ONLY when the existing library covers the SAME single
+habit. Lean toward "add" whenever the proposed skill names a habit not
+already in the library — coverage matters more than catalog size, since
+each skill is small (≤ 60 words, ONE habit) and the selector picks ≤ 2
+per task.
 
 For each proposed skill, choose exactly one action:
-  "discard"  : addresses the SAME behavior as an existing skill — even if
-               titled or worded differently — OR adds only minor detail not
-               worth a separate entry
-  "update"   : overlaps with an existing skill AND contributes meaningfully
-               different guidance; provide existing_skill_id and
-               updated_guidance (merged best-of-both version)
+  "discard"  : addresses the SAME single habit as an existing skill (NOT
+               just the same broad area) — e.g. both say "state complexity
+               first" — OR adds only minor wording differences.
+  "update"   : addresses the SAME single habit AND contributes a meaningfully
+               sharper or more general phrasing; provide existing_skill_id
+               and updated_guidance (≤ 60 words, ONE habit, best-of-both).
+               Do NOT use "update" to merge two different habits into a
+               longer combined guidance — keep the existing one and "add"
+               the new one instead.
   "replace"  : CONTRADICTS an existing skill (proposes opposite behavior
                for the same situation); provide existing_skill_id and
-               updated_guidance (coherent synthesis)
-  "add"      : covers genuinely new behavior not addressed by ANY existing
-               skill in this axis
+               updated_guidance (coherent synthesis, ≤ 60 words).
+  "add"      : covers a habit not addressed by any existing skill in this
+               axis. Two habits are different even if their catalog_triggers
+               overlap — what matters is whether the *guidance* describes
+               the same single check.
 
-Two skills address the same behavior if their guidance would prevent the
-same concrete assistant mistake — regardless of how their titles or
-triggers are phrased.
+If you are tempted to "update" because the existing skill is "close" but
+covers a different habit (e.g. existing = "state complexity first",
+proposed = "name the algorithmic pattern"), choose "add" instead. Long
+combined guidance is BANNED — every stored skill must remain ≤ 60 words
+and one habit.
 
 Return ONLY a JSON object:
 {{
@@ -277,22 +344,29 @@ coding assistant. The library may contain duplicate, overlapping, or
 contradictory skills WITHIN this axis. You will not see, and must not
 produce, any skills of the other axis.
 
-Group skills that address the same core behavior. For each group:
+Group skills that target the SAME single habit (NOT just the same broad
+area). For each group:
   • Pick the skill with the highest support_count as the primary
     (use its id as keep_id)
-  • Write a unified title, catalog_trigger, and guidance that covers
-    the whole group
+  • Write a unified title (≤ 8 words), catalog_trigger, and guidance
+    (≤ 60 words, ONE habit) that covers the whole group
   • List the ids of all OTHER skills in the group as discard_ids
 
-Skills that are genuinely distinct should appear as singleton groups
-(discard_ids = []).
+Skills that target DIFFERENT habits MUST appear as singleton groups
+(discard_ids = []) — even if their triggers or titles look similar.
+"Different habit" means a reader following one skill could still violate
+the other (e.g. naming the pattern doesn't satisfy "state complexity
+first"; using descriptive names doesn't satisfy "extract magic numbers").
 
 Rules:
   • Every skill id must appear exactly once across all keep_id and
     discard_ids fields combined.
-  • If two skills contradict each other, resolve the contradiction in the
-    merged guidance.
+  • If two skills contradict each other on the SAME habit, resolve the
+    contradiction in the merged guidance.
   • Prefer broader, reusable guidance over task-specific wording.
+  • The merged guidance MUST stay ≤ 60 words and cover ONE habit. If a
+    merge would force a longer or multi-habit guidance, KEEP the skills
+    separate (singleton groups).
 
 Return ONLY a JSON object:
 {{
@@ -331,10 +405,12 @@ current task. The catalog contains TWO kinds of guideline:
                   structure that would trigger the bug class.
 
 Select AT MOST {max_skills} guidelines that are clearly relevant to this task.
-Prefer balancing across the two kinds when both are relevant — at most one
-preference and at most one correctness skill is a good default. Only select
-a guideline if its trigger directly matches the situation described in the
-task. If none apply, return an empty list.
+When several preference guidelines describe complementary response-structure
+habits for the same task, select all of the relevant ones up to the limit.
+Prefer a correctness guideline only when it adds a distinct bug-prevention
+check; do not select near-duplicate guidelines that ask for the same behavior.
+Only select a guideline if its trigger directly matches the situation described
+in the task. If none apply, return an empty list.
 
 Return ONLY a JSON object:
 {{"selected_ids": ["id1", "id2"]}}

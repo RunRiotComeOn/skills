@@ -106,7 +106,24 @@ class TaskInteraction(BaseModel):
     # axis: 1.0 means the delivered response respected every preference,
     # 0.0 means it violated all of them. None when there is no assistant
     # turn or the profile has no preferences.
+    #
+    # CAVEAT: this metric tends to saturate near 1.0 because the assistant
+    # almost always recovers after a correction or two. For a more
+    # discriminative signal use `first_turn_preference_acceptance_rate`
+    # below — that one measures whether the model got it right on the
+    # first try, which is what skill-map memory should improve.
     preference_acceptance_rate: Optional[float] = None
+    # Fraction of profile preferences NOT violated in the FIRST assistant
+    # turn (i.e. before any user correction has fired this task). This is
+    # the discriminative companion to `preference_acceptance_rate`: it
+    # measures whether SkillMap pre-loaded the right habits, not whether
+    # the model can be corrected into compliance. None when there is no
+    # assistant turn or the profile has no preferences.
+    first_turn_preference_acceptance_rate: Optional[float] = None
+    # Count of profile preferences violated in the FIRST assistant turn.
+    # Mirror of the rate above in absolute units, useful for stream-level
+    # rolling-mean curves where a fraction can wash out.
+    first_turn_preference_violation_count: Optional[int] = None
     retrieved_skill_ids_at_start: list[str] = Field(default_factory=list)
 
 

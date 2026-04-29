@@ -313,26 +313,59 @@ def compute_correctness_trajectory(run: StreamRun) -> CorrectnessTrajectory:
     early = stream[:midpoint]
     late = stream[midpoint:]
 
-    avg_early = _mean_pass_rate(early)
-    avg_late = _mean_pass_rate(late)
-    avg_held_out = _mean_pass_rate(held_out)
-
-    all_interactions = stream + held_out
-    completed = sum(1 for i in all_interactions if i.completion_reason == "user_accepted")
-    completion_rate = completed / len(all_interactions) if all_interactions else 0.0
-
     return CorrectnessTrajectory(
         condition_name=_cast(run.condition_name),
-        avg_pass_rate_early=avg_early,
-        avg_pass_rate_late=avg_late,
-        avg_pass_rate_held_out=avg_held_out,
-        task_completion_rate=completion_rate,
+        avg_pass_rate_early=mean_test_case_pass_rate(early)[0],
+        avg_pass_rate_late=mean_test_case_pass_rate(late)[0],
+        avg_pass_rate_held_out=mean_test_case_pass_rate(held_out)[0],
+        task_completion_rate=task_completion_rate(stream + held_out),
     )
 
 
-def _mean_pass_rate(interactions: list[TaskInteraction]) -> float:
-    rates = [i.test_case_pass_rate for i in interactions if i.test_case_pass_rate is not None]
-    return (sum(rates) / len(rates)) if rates else 0.0
+def mean_test_case_pass_rate(
+    interactions: list[TaskInteraction],
+) -> tuple[float, int]:
+    """Average test_case_pass_rate over interactions whose code was MEASURABLE.
+
+    Tasks with `test_case_pass_rate is None` (no extractable code, no
+    matching test cases) are dropped — counted via the second element of
+    the returned tuple so callers can distinguish "0% pass rate over 5
+    measurable tasks" from "0 measurable tasks".
+
+    See `mean_test_case_pass_rate_strict` for the variant that treats
+    unmeasurable tasks as 0.0 (failed).
+    """
+    rates = [
+        i.test_case_pass_rate for i in interactions
+        if i.test_case_pass_rate is not None
+    ]
+    return ((sum(rates) / len(rates)) if rates else 0.0, len(rates))
+
+
+def mean_test_case_pass_rate_strict(
+    interactions: list[TaskInteraction],
+) -> float:
+    """Average test_case_pass_rate over ALL interactions; None counts as 0.
+
+    Strict denominator = len(interactions). This is the metric to look at
+    when "no extractable code" should be punished as a delivery failure
+    (the assistant didn't ship runnable code) rather than ignored.
+    """
+    if not interactions:
+        return 0.0
+    total = sum(
+        (i.test_case_pass_rate if i.test_case_pass_rate is not None else 0.0)
+        for i in interactions
+    )
+    return total / len(interactions)
+
+
+def task_completion_rate(interactions: list[TaskInteraction]) -> float:
+    """Fraction of interactions whose simulator chose `user_accepted`."""
+    if not interactions:
+        return 0.0
+    accepted = sum(1 for i in interactions if i.completion_reason == "user_accepted")
+    return accepted / len(interactions)
 
 
 def _cast(name: str) -> ConditionName:

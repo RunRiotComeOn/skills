@@ -11,11 +11,16 @@ from skillmap_eval.metrics.correction_rate import compute_correction_curve
 from skillmap_eval.metrics.correctness_sanity import (
     compute_correctness_trajectory,
     extract_python_code,
+    mean_test_case_pass_rate,
+    mean_test_case_pass_rate_strict,
     run_sanity_check_for_task,
 )
 from skillmap_eval.metrics.generalization import compute_generalization
+from skillmap_eval.conditions.base import format_task_hint
 from skillmap_eval.metrics.preference_acceptance import (
     compute_preference_trajectory,
+    mean_first_turn_preference_acceptance_rate,
+    mean_first_turn_preference_violation_count,
 )
 from skillmap_eval.types import (
     EvalTask,
@@ -33,6 +38,8 @@ def _make_interaction(
     pref_count: int | None = None,
     corr_count: int | None = None,
     acceptance_rate: float | None = 1.0,
+    first_turn_acceptance_rate: float | None = None,
+    first_turn_violations: int | None = None,
 ) -> TaskInteraction:
     # By default, attribute the whole correction_count to the preference axis
     # so legacy tests keep their original semantics.
@@ -49,6 +56,8 @@ def _make_interaction(
         completion_reason=completion,  # type: ignore[arg-type]
         test_case_pass_rate=pass_rate,
         preference_acceptance_rate=acceptance_rate,
+        first_turn_preference_acceptance_rate=first_turn_acceptance_rate,
+        first_turn_preference_violation_count=first_turn_violations,
         retrieved_skill_ids_at_start=[],
     )
 
@@ -94,6 +103,31 @@ def test_generalization_handles_empty_held_out() -> None:
     assert g.held_out_median_correction_count == 0.0
     assert g.held_out_avg_preference_corrections == 0.0
     assert g.held_out_avg_correctness_corrections == 0.0
+
+
+def test_mean_test_case_pass_rate_measurable_drops_none() -> None:
+    interactions = [
+        _make_interaction(0, 0, pass_rate=None),
+        _make_interaction(1, 0, pass_rate=0.5),
+        _make_interaction(2, 0, pass_rate=1.0),
+    ]
+    mean, n = mean_test_case_pass_rate(interactions)
+    assert n == 2
+    assert mean == 0.75
+
+
+def test_mean_test_case_pass_rate_strict_counts_none_as_zero() -> None:
+    interactions = [
+        _make_interaction(0, 0, pass_rate=None),
+        _make_interaction(1, 0, pass_rate=0.5),
+        _make_interaction(2, 0, pass_rate=1.0),
+    ]
+    # Strict: (0 + 0.5 + 1.0) / 3 = 0.5
+    assert mean_test_case_pass_rate_strict(interactions) == 0.5
+
+
+def test_mean_test_case_pass_rate_strict_empty_returns_zero() -> None:
+    assert mean_test_case_pass_rate_strict([]) == 0.0
 
 
 def test_correctness_trajectory_averages_pass_rates() -> None:
@@ -172,6 +206,52 @@ def test_run_sanity_check_returns_none_when_no_code() -> None:
     task = EvalTask.model_validate_json(fixture_path.read_text())
     # No code → cannot evaluate → None (not 0.0).
     assert run_sanity_check_for_task(task, "no code at all") is None
+
+
+def test_first_turn_metrics_drop_none_and_average() -> None:
+    interactions = [
+        _make_interaction(0, 0, first_turn_acceptance_rate=None, first_turn_violations=None),
+        _make_interaction(1, 0, first_turn_acceptance_rate=0.6, first_turn_violations=4),
+        _make_interaction(2, 0, first_turn_acceptance_rate=1.0, first_turn_violations=0),
+    ]
+    rate_mean, rate_n = mean_first_turn_preference_acceptance_rate(interactions)
+    assert rate_n == 2
+    assert rate_mean == 0.8
+
+    count_mean, count_n = mean_first_turn_preference_violation_count(interactions)
+    assert count_n == 2
+    assert count_mean == 2.0
+
+
+def test_format_task_hint_distinguishes_io_styles() -> None:
+    base = dict(task_id="t", source="livecodebench", problem_statement="x", difficulty="easy")
+
+    functional_only = EvalTask(
+        **base, test_cases=[{"testtype": "functional", "input": "[]", "output": "0"}]
+    )
+    stdin_only = EvalTask(
+        **base, test_cases=[{"testtype": "stdin", "input": "1", "output": "1"}]
+    )
+    mixed = EvalTask(
+        **base,
+        test_cases=[
+            {"testtype": "functional", "input": "[]", "output": "0"},
+            {"testtype": "stdin", "input": "1", "output": "1"},
+        ],
+    )
+    no_cases = EvalTask(**base, test_cases=[])
+
+    func_hint = format_task_hint(functional_only)
+    assert "class Solution" in func_hint
+    assert "Do NOT read from stdin" in func_hint
+
+    stdin_hint = format_task_hint(stdin_only)
+    assert "stdin" in stdin_hint.lower()
+    assert "Do NOT define a `class Solution`" in stdin_hint
+
+    # Mixed and empty cases must be empty so we don't lie to the model.
+    assert format_task_hint(mixed) == ""
+    assert format_task_hint(no_cases) == ""
 
 
 def test_run_sanity_check_executes_passing_code() -> None:

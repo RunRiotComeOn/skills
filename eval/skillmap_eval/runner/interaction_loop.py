@@ -161,20 +161,37 @@ class InteractionLoop:
         except Exception:
             pass_rate = None
 
-        # Preference acceptance rate on the FINAL assistant turn — the
-        # preference-axis analogue of test_case_pass_rate.
+        # Preference acceptance on the FINAL and FIRST assistant turns.
+        # The final-turn rate is the legacy "did the delivered response
+        # comply" metric; the first-turn rate is the discriminative
+        # "did the model get it right BEFORE any correction" metric — the
+        # one that should actually move when SkillMap is doing its job.
+        profile_pref_ids = {p.id for p in simulator.profile.preferences}
+        total_prefs = len(profile_pref_ids)
         acceptance_rate: float | None = None
-        total_prefs = len(simulator.profile.preferences)
+        first_turn_rate: float | None = None
+        first_turn_violations: int | None = None
         if total_prefs > 0:
             last_assistant_turn = next(
                 (t for t in reversed(turns) if t.role == "assistant"), None
             )
             if last_assistant_turn is not None:
-                violated = {
+                violated_last = {
                     pid for pid in last_assistant_turn.violated_preferences
-                    if pid in {p.id for p in simulator.profile.preferences}
+                    if pid in profile_pref_ids
                 }
-                acceptance_rate = (total_prefs - len(violated)) / total_prefs
+                acceptance_rate = (total_prefs - len(violated_last)) / total_prefs
+
+            first_assistant_turn = next(
+                (t for t in turns if t.role == "assistant"), None
+            )
+            if first_assistant_turn is not None:
+                violated_first = {
+                    pid for pid in first_assistant_turn.violated_preferences
+                    if pid in profile_pref_ids
+                }
+                first_turn_rate = (total_prefs - len(violated_first)) / total_prefs
+                first_turn_violations = len(violated_first)
 
         interaction = TaskInteraction(
             task_id=task.task_id,
@@ -187,6 +204,8 @@ class InteractionLoop:
             completion_reason=completion,
             test_case_pass_rate=pass_rate,
             preference_acceptance_rate=acceptance_rate,
+            first_turn_preference_acceptance_rate=first_turn_rate,
+            first_turn_preference_violation_count=first_turn_violations,
             retrieved_skill_ids_at_start=retrieved_ids_at_start,
         )
 

@@ -36,23 +36,26 @@ class Orchestrator:
         # State carried between handle_query and finalize_task for one task.
         self._pending_selected: list[Skill] = []
         self._pending_conversation: list[dict] = []
+        self._pending_task_hint: str = ""
 
     # ------------------------------------------------------------------
     # Runtime path (called per turn from the condition)
     # ------------------------------------------------------------------
 
     async def handle_first_turn(
-        self, user_query: str
+        self, user_query: str, task_hint: str = ""
     ) -> tuple[str, list[str]]:
         """Stage C + LLM-B call for the first user turn of a task."""
         selected = await self.selector.select(user_query, self.skill_map)
         self._pending_selected = selected
         self._pending_conversation = []
+        self._pending_task_hint = task_hint
 
         response = await self.assistant.run(
             user_query,
             selected_skills=selected,
             conversation_history=None,
+            task_hint=task_hint,
         )
         self._pending_conversation = [
             {"role": "user", "content": user_query},
@@ -66,6 +69,7 @@ class Orchestrator:
             user_message,
             selected_skills=self._pending_selected,
             conversation_history=self._pending_conversation,
+            task_hint=self._pending_task_hint,
         )
         self._pending_conversation.append({"role": "user", "content": user_message})
         self._pending_conversation.append({"role": "assistant", "content": response})
@@ -80,6 +84,7 @@ class Orchestrator:
         trajectory = list(self._pending_conversation)
         self._pending_selected = []
         self._pending_conversation = []
+        self._pending_task_hint = ""
 
         if not trajectory:
             return

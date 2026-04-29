@@ -76,6 +76,9 @@ Rules for writing a natural, VARIED correction:
 • NEVER mention a "preference profile", "pref IDs", or any meta-evaluation
   language. You're a real person talking to an assistant.
 
+• Keep your response under 60 words. Real user corrections are terse; do
+  NOT write long explanations or traces. One or two sentences is enough.
+
 {correction_style_hint}\
 Output ONLY a JSON object (no prose, no code fence):
 {{

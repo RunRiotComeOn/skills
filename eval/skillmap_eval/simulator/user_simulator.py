@@ -65,7 +65,7 @@ class UserSimulator:
                 provider="bedrock",
                 model=llm_a_model,
                 region=region,
-                max_tokens=512,
+                max_tokens=2048,
                 extra_inference={"temperature": simulator_temperature},
             )
         )

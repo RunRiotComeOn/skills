@@ -17,7 +17,10 @@ from skillmap.runtime import Assistant
 from skillmap.storage import JSONPersistence, SkillMap
 from skillmap.types import SkillMapState
 
-from skillmap_eval.conditions.base import render_conversation_for_llm_b
+from skillmap_eval.conditions.base import (
+    format_task_hint,
+    render_conversation_for_llm_b,
+)
 from skillmap_eval.types import EvalTask, SimulatedTurn, TaskInteraction
 
 
@@ -76,7 +79,9 @@ class SkillMapCondition:
         assert self._orchestrator is not None, "setup() not called"
 
         if not conversation_so_far:
-            return await self._orchestrator.handle_first_turn(user_message)
+            return await self._orchestrator.handle_first_turn(
+                user_message, task_hint=format_task_hint(task)
+            )
         else:
             response = await self._orchestrator.handle_followup_turn(user_message)
             return response, []
