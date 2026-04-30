@@ -48,7 +48,7 @@ from skillmap_eval.metrics import (
 from skillmap_eval.preferences import PreferenceElicitor
 from skillmap_eval.runner import InteractionLoop
 from skillmap_eval.simulator import UserSimulator
-from skillmap_eval.tasks import LiveCodeBenchLoader
+from skillmap_eval.tasks import AIMELoader, LiveCodeBenchLoader
 from skillmap_eval.types import EvalTask, PreferenceProfile, StreamRun, TaskInteraction
 
 
@@ -133,6 +133,18 @@ def _storage_root() -> Path:
     return ROOT / "data" / "skillmap_day_runs"
 
 
+def _make_loader(cfg: dict[str, Any]) -> LiveCodeBenchLoader | AIMELoader:
+    source = cfg["tasks"].get("source", "livecodebench")
+    cache_dir = cfg["tasks"]["cache_dir"]
+    if source == "aime":
+        return AIMELoader(cache_dir=cache_dir)
+    return LiveCodeBenchLoader(cache_dir=cache_dir)
+
+
+def _task_type_for_source(source: str) -> str:
+    return "math_competition" if source == "aime" else "python_coding"
+
+
 async def _ensure_profile(cfg: dict[str, Any], profile_id: str) -> Path:
     path = _profiles_dir(cfg) / f"{profile_id}.json"
     if path.exists():
@@ -144,7 +156,7 @@ async def _ensure_profile(cfg: dict[str, Any], profile_id: str) -> Path:
     retry_max = int(cfg["preferences"]["retry_max"])
     n_preferences = int(cfg["preferences"]["n_preferences"])
 
-    loader = LiveCodeBenchLoader(cache_dir=cfg["tasks"]["cache_dir"])
+    loader = _make_loader(cfg)
     all_tasks = await loader.load()
     task_examples = _sample_day_batches(
         tasks=all_tasks,
@@ -154,13 +166,14 @@ async def _ensure_profile(cfg: dict[str, Any], profile_id: str) -> Path:
         seed=int(cfg["tasks"]["seed"]),
     )[0]
 
+    source = cfg["tasks"].get("source", "livecodebench")
     elicitor = PreferenceElicitor(
         llm_a_model=model,
         region=region,
         retry_max=retry_max,
     )
     profile = await elicitor.run(
-        task_type="python_coding",
+        task_type=_task_type_for_source(source),
         n_preferences=n_preferences,
         task_examples=task_examples,
     )
@@ -447,7 +460,7 @@ async def _run(args: argparse.Namespace) -> Path:
     profile_path = await _ensure_profile(cfg, args.profile)
     profile = _load_profile(profile_path)
 
-    loader = LiveCodeBenchLoader(cache_dir=cfg["tasks"]["cache_dir"])
+    loader = _make_loader(cfg)
     all_tasks = await loader.load()
     day_batches = _sample_day_batches(
         tasks=all_tasks,

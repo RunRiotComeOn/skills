@@ -47,6 +47,28 @@ _SOLUTION_METHOD_RE = re.compile(
     re.DOTALL,
 )
 
+# AIME answers are integers 0–999.
+_BOXED_RE = re.compile(r"\\boxed\{(\d{1,3})\}")
+_ANSWER_PHRASE_RE = re.compile(
+    r"(?:the\s+)?answer\s+(?:is\s+)?[:\s]*(\d{1,3})\b", re.IGNORECASE
+)
+_TRAILING_INT_RE = re.compile(r"\b(\d{1,3})\b")
+
+
+def extract_aime_answer(text: str) -> str | None:
+    """Extract the final integer answer (0–999) from an assistant response.
+
+    Priority: \\boxed{N} > "the answer is N" > last standalone integer in range.
+    """
+    m = _BOXED_RE.search(text)
+    if m:
+        return m.group(1)
+    m = _ANSWER_PHRASE_RE.search(text)
+    if m:
+        return m.group(1)
+    candidates = [m for m in _TRAILING_INT_RE.findall(text) if 0 <= int(m) <= 999]
+    return candidates[-1] if candidates else None
+
 
 def extract_python_code(message: str) -> str | None:
     matches = _CODE_FENCE_RE.findall(message)
@@ -65,11 +87,18 @@ def run_sanity_check_for_task(
     assistant_message: str,
     timeout_s: float = 10.0,
 ) -> float | None:
-    """Return pass rate in [0, 1], or None when the code cannot be evaluated.
+    """Return pass rate in [0, 1], or None when the answer cannot be evaluated.
 
-    None means "couldn't run" (no code extracted, no matching test cases, or
-    stdin code that doesn't read stdin). 0.0 means "ran but all tests failed".
+    For AIME tasks: extracts the final integer from the response and compares
+    to the reference answer. Returns 1.0 (correct), 0.0 (wrong), or None
+    (no answer found).
+
+    For LCB tasks: runs Python code against test cases. None means "couldn't
+    run"; 0.0 means "ran but all tests failed".
     """
+    if task.source == "aime":
+        return _check_aime_answer(task, assistant_message)
+
     code = extract_python_code(assistant_message)
     if not code or not task.test_cases:
         return None
@@ -101,6 +130,18 @@ def run_sanity_check_for_task(
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+def _check_aime_answer(task: EvalTask, assistant_message: str) -> float | None:
+    if not task.test_cases:
+        return None
+    expected = str(task.test_cases[0].get("answer", "")).strip()
+    if not expected:
+        return None
+    extracted = extract_aime_answer(assistant_message)
+    if extracted is None:
+        return None
+    return 1.0 if extracted == expected else 0.0
+
 
 def _reads_stdin(code: str) -> bool:
     return "input(" in code or "sys.stdin" in code or "stdin.read" in code
@@ -199,12 +240,19 @@ def format_test_results_for_llm(
     max_cases: int = 2,
     timeout_s: float = 5.0,
 ) -> str:
-    """Return a short human-readable test result string to show the simulator LLM.
+    """Return a short human-readable result string to show the simulator LLM.
 
-    Returns empty string if no code was found or no test cases available.
-    The simulator can use this to give natural correctness corrections like
-    "I ran this and got X but expected Y".
+    For AIME: checks whether the extracted integer answer is correct. Does NOT
+    reveal the expected answer, so the simulator cannot simply relay it to the
+    model — it can only say "that's wrong, try again."
+
+    For LCB: runs test cases and reports input/output mismatches.
+
+    Returns empty string when no answer/code was found or no test cases exist.
     """
+    if task.source == "aime":
+        return _format_aime_result_for_llm(task, assistant_message)
+
     code = extract_python_code(assistant_message)
     if not code or not task.test_cases:
         return ""
@@ -233,6 +281,20 @@ def format_test_results_for_llm(
     passed = sum(1 for l in lines if l.startswith("  ✓"))
     header = f"Test results ({passed}/{len(lines)} sample cases passed):"
     return header + "\n" + "\n".join(lines)
+
+
+def _format_aime_result_for_llm(task: EvalTask, assistant_message: str) -> str:
+    if not task.test_cases:
+        return ""
+    expected = str(task.test_cases[0].get("answer", "")).strip()
+    if not expected:
+        return ""
+    extracted = extract_aime_answer(assistant_message)
+    if extracted is None:
+        return ""
+    if extracted == expected:
+        return "Answer check: ✓ correct"
+    return "Answer check: ✗ your final answer is incorrect"
 
 
 def _format_result_line(idx: int, expected: str, actual_or_err: str | None) -> str:

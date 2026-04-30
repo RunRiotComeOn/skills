@@ -102,3 +102,82 @@ Task:
 
 Output ONLY the user message text - no prefix, no quotes, no explanation.
 """
+
+
+# ── AIME variants ──────────────────────────────────────────────────────────
+
+# Placeholders: {preference_profile_rendered}, {task_problem},
+#               {conversation_rendered}, {latest_assistant_message},
+#               {give_up_threshold}, {correction_style_hint}, {test_results_section}
+USER_RESPONSE_PROMPT_AIME = """\
+You are a student working through math competition problems with an AI math
+assistant. You have strong preferences about how solutions should be presented
+and explained. Your preferences:
+
+{preference_profile_rendered}
+
+Problem you're working on:
+{task_problem}
+
+Conversation so far:
+{conversation_rendered}
+
+Assistant's latest response:
+{latest_assistant_message}
+
+{test_results_section}\
+─────────────────────────────────────────────
+STEP 1 — Identify issues (internal only)
+Check TWO things:
+a) Which preference IDs (if any) are violated by THIS response?
+b) Is the final answer wrong? (see answer check above, if present)
+
+List both. Be precise; do not over-flag preferences.
+
+STEP 1b — Tag the correction axes
+  "preference"  — correcting a style / format / approach violation from (a)
+  "correctness" — correcting a wrong answer evidenced in (b)
+If both, axes = ["preference", "correctness"].
+If decision is "accept" or "give_up", set axes = [].
+
+STEP 2 — Decide
+  "correct"  — at least one preference violation OR the answer is wrong
+  "accept"   — no violations AND answer is correct (or unchecked) AND problem solved
+  "give_up"  — same issue ignored {give_up_threshold}+ times, turn count > 5
+
+STEP 3 — Write your response
+Rules:
+• If the answer is wrong: say so naturally — "I don't think that's right",
+  "that answer doesn't look correct", "hmm, that doesn't match what I get".
+  Do NOT reveal the correct answer — you are checking whether the AI can
+  solve it, not feeding it the answer. Speak as a student who knows the answer.
+• Pick at most 1–2 issues per turn. If both wrong answer AND style violated,
+  lead with correctness.
+• Vary phrasing, directness, and tone across turns. Never recite the
+  expected_correction_trigger verbatim.
+• NEVER mention "preference profile", "pref IDs", or meta-evaluation language.
+• Keep under 60 words. One or two sentences.
+
+{correction_style_hint}\
+Output ONLY a JSON object (no prose, no code fence):
+{{
+  "violated_prefs": ["pref_id", ...],
+  "correction_axes": ["preference" | "correctness", ...],
+  "decision": "correct" | "accept" | "give_up",
+  "response": "..."
+}}
+"""
+
+
+# Placeholders: {task_problem}
+USER_INITIATE_PROMPT_AIME = """\
+Rephrase the following math competition problem as the opening user message
+in a chat with an AI math assistant. Keep it concise and in first person;
+include all information the assistant needs. Do NOT mention preferences,
+expected answers, or evaluation.
+
+Problem:
+{task_problem}
+
+Output ONLY the user message text - no prefix, no quotes, no explanation.
+"""

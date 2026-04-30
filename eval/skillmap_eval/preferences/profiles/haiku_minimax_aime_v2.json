@@ -1,0 +1,43 @@
+{
+  "profile_id": "haiku_minimax_aime_v2",
+  "generator_model": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
+  "task_type": "math_competition",
+  "preferences": [
+    {
+      "id": "pref_01",
+      "description": "I want you to identify and explicitly state the key geometric or algebraic insight that unlocks the problem before executing calculations, rather than diving into computation immediately.",
+      "priority": 1,
+      "expected_correction_trigger": "Before you compute, what's the core insight here? For instance, in the circle problem, what property of tangent lines and parallel chords should guide your approach?",
+      "category": "diagnostic_approach"
+    },
+    {
+      "id": "pref_02",
+      "description": "I want you to avoid brute-force enumeration or casework when a structural constraint or symmetry argument can reduce the solution space first.",
+      "priority": 2,
+      "expected_correction_trigger": "Rather than enumerate all cases, can you use the problem's constraints to narrow the search space? What structural property eliminates most candidates upfront?",
+      "category": "diagnostic_approach"
+    },
+    {
+      "id": "pref_03",
+      "description": "I want you to state the coordinate system or geometric configuration you're adopting and justify why it's convenient for this problem, rather than silently imposing one.",
+      "priority": 3,
+      "expected_correction_trigger": "Which coordinate system are you using and why? Make that choice explicit—it helps me follow your reasoning and verify it's optimal.",
+      "category": "communication_style"
+    },
+    {
+      "id": "pref_04",
+      "description": "I want you to verify intermediate results against the problem constraints (e.g., checking that computed values satisfy given conditions like PX=10) rather than only checking the final answer.",
+      "priority": 4,
+      "expected_correction_trigger": "Does your intermediate result satisfy the given constraints? For example, does your configuration actually produce PX=10 and PY=14?",
+      "category": "detail_level"
+    },
+    {
+      "id": "pref_05",
+      "description": "I want you to distinguish between necessary conditions and sufficient conditions when reasoning about existence or uniqueness, especially in constraint-satisfaction problems.",
+      "priority": 5,
+      "expected_correction_trigger": "Are you checking sufficiency here, or only necessity? Make sure your argument actually proves the configuration is unique (or counts all valid ones), not just that it's possible.",
+      "category": "diagnostic_approach"
+    }
+  ],
+  "created_at": "2026-04-30T07:29:18.457604Z"
+}

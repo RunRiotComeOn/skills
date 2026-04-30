@@ -24,6 +24,9 @@ preferences:
   retry_max: 3
 
 tasks:
+  # Supported: livecodebench | aime
+  # For aime, set cache_dir to ./data/aime and place raw JSONL files there,
+  # or leave it empty to auto-download from HuggingFace (AI-MO/aimo-validation-aime).
   source: livecodebench
   cache_dir: ./data/livecodebench
   n_stream: 30

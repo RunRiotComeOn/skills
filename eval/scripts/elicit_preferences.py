@@ -25,31 +25,44 @@ import yaml
 
 from skillmap_eval.preferences import PreferenceElicitor
 from skillmap_eval.tasks import LiveCodeBenchLoader
+from skillmap_eval.tasks.aime_loader import AIMELoader
 from skillmap_eval.types import EvalTask
 
 
-def _load_cfg() -> dict:
-    return yaml.safe_load((ROOT / "eval_config.yaml").read_text(encoding="utf-8"))
+def _load_cfg(config_path: str | None) -> dict:
+    path = Path(config_path) if config_path else ROOT / "eval_config.yaml"
+    if not path.is_absolute():
+        path = ROOT / path
+    return yaml.safe_load(path.read_text(encoding="utf-8"))
 
 
 async def _sample_task_examples(cfg: dict, n_examples: int = 3) -> list[EvalTask]:
     tasks_cfg = cfg["tasks"]
-    loader = LiveCodeBenchLoader(cache_dir=tasks_cfg["cache_dir"])
-    all_tasks = await loader.load()
+    source = tasks_cfg.get("source", "livecodebench")
 
-    difficulty_mix = {k: float(v) for k, v in tasks_cfg["difficulty_mix"].items()}
-    stream_tasks, _ = loader.sample_stream(
-        all_tasks,
-        n_stream=n_examples,
-        n_held_out=0,
-        difficulty_mix=difficulty_mix,
-        seed=int(tasks_cfg["seed"]),
-    )
-    return stream_tasks
+    if source == "aime":
+        loader = AIMELoader(cache_dir=tasks_cfg["cache_dir"])
+        all_tasks = await loader.load()
+        import random
+        rng = random.Random(int(tasks_cfg["seed"]))
+        rng.shuffle(all_tasks)
+        return all_tasks[:n_examples]
+    else:
+        loader = LiveCodeBenchLoader(cache_dir=tasks_cfg["cache_dir"])
+        all_tasks = await loader.load()
+        difficulty_mix = {k: float(v) for k, v in tasks_cfg["difficulty_mix"].items()}
+        stream_tasks, _ = loader.sample_stream(
+            all_tasks,
+            n_stream=n_examples,
+            n_held_out=0,
+            difficulty_mix=difficulty_mix,
+            seed=int(tasks_cfg["seed"]),
+        )
+        return stream_tasks
 
 
-async def _run(task_type: str, n_preferences: int, out_name: str | None) -> Path:
-    cfg = _load_cfg()
+async def _run(task_type: str, n_preferences: int, out_name: str | None, config_path: str | None) -> Path:
+    cfg = _load_cfg(config_path)
     llm = cfg["llm"]
     model = llm.get("dev_override_a") or llm["llm_a_model"]
     region = llm.get("region", "us-east-1")
@@ -83,14 +96,15 @@ def main() -> None:
     parser.add_argument("--task-type", default="python_coding")
     parser.add_argument("--n", type=int, default=None, help="override preferences.n_preferences")
     parser.add_argument("--name", default=None, help="explicit profile_id (filename without .json)")
+    parser.add_argument("--config", default=None, help="path to eval config yaml (default: eval_config.yaml)")
     args = parser.parse_args()
 
-    cfg = _load_cfg()
+    cfg = _load_cfg(args.config)
     n = args.n or int(cfg["preferences"]["n_preferences"])
 
-    path = asyncio.run(_run(args.task_type, n, args.name))
+    path = asyncio.run(_run(args.task_type, n, args.name, args.config))
     print(f"wrote profile -> {path}")
-    print("Phase 1 gate: read the file, confirm >= 8/N preferences are non-default.")
+    print("Phase 1 gate: read the file, confirm >= N*0.8 preferences are non-default.")
 
 
 if __name__ == "__main__":

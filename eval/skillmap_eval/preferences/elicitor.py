@@ -21,25 +21,40 @@ from skillmap_eval.preferences.prompts import PREFERENCE_ELICITATION_PROMPT
 from skillmap_eval.types import EvalTask, Preference, PreferenceProfile
 
 
-_CATEGORIES = [
+_CATEGORIES_BY_TASK_TYPE: dict[str, list[str]] = {
+    "python_coding": [
+        "communication_style",
+        "diagnostic_approach",
+        "code_style",
+        "tool_usage",
+        "detail_level",
+    ],
+    "math_competition": [
+        "communication_style",
+        "diagnostic_approach",
+        "mathematical_approach",
+        "problem_solving_style",
+        "detail_level",
+    ],
+}
+_CATEGORIES_DEFAULT = [
     "communication_style",
     "diagnostic_approach",
-    "code_style",
-    "tool_usage",
+    "solution_approach",
+    "presentation_style",
     "detail_level",
 ]
 
-_PROFILE_SCHEMA = """{
-  "preferences": [
-    {
-      "id": "pref_01",
-      "description": "...",
-      "priority": 1,
-      "expected_correction_trigger": "...",
-      "category": "one of: communication_style, diagnostic_approach, code_style, tool_usage, detail_level"
-    }
-  ]
-}"""
+_PERSONA_BY_TASK_TYPE: dict[str, str] = {
+    "python_coding": "software engineer with strong opinions about how AI coding assistants should behave",
+    "math_competition": "math competition trainer with strong opinions about how AI tutors should approach competition math",
+}
+_PERSONA_DEFAULT = "domain expert with strong opinions about how AI assistants should behave"
+
+
+def _profile_schema(categories: list[str]) -> str:
+    cats = ", ".join(categories)
+    return f"""{{\n  "preferences": [\n    {{\n      "id": "pref_01",\n      "description": "...",\n      "priority": 1,\n      "expected_correction_trigger": "...",\n      "category": "one of: {cats}"\n    }}\n  ]\n}}"""
 
 
 class ElicitationError(RuntimeError):
@@ -93,11 +108,14 @@ class PreferenceElicitor:
         n_preferences: int,
         task_examples: list[EvalTask] | None = None,
     ) -> dict[str, Any]:
+        categories = _CATEGORIES_BY_TASK_TYPE.get(task_type, _CATEGORIES_DEFAULT)
+        persona = _PERSONA_BY_TASK_TYPE.get(task_type, _PERSONA_DEFAULT)
         prompt = PREFERENCE_ELICITATION_PROMPT.format(
             n_preferences=n_preferences,
             task_type=task_type,
-            categories_list=", ".join(_CATEGORIES),
-            schema=_PROFILE_SCHEMA,
+            persona=persona,
+            categories_list=", ".join(categories),
+            schema=_profile_schema(categories),
             task_examples_section=self._format_task_examples(task_examples or []),
         )
         result = await self._client.call(

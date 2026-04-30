@@ -1,0 +1,45 @@
+# Eval config for AIME math tasks — v2.
+# Compared to v1: longer turn budget (8→12), higher give-up threshold (3→5),
+# and references the trimmed 5-preference profile haiku_minimax_aime_v2.
+
+llm:
+  llm_a_model: us.anthropic.claude-haiku-4-5-20251001-v1:0
+  llm_b_model: minimax.minimax-m2.5
+  llm_judge_model: us.anthropic.claude-haiku-4-5-20251001-v1:0
+
+  temperature_a: 0.0
+  temperature_b: 0.7
+  max_tokens: 4096
+  region: us-east-1
+
+preferences:
+  n_preferences: 5
+  retry_max: 3
+
+tasks:
+  source: aime
+  cache_dir: ./data/aime
+  n_stream: 30
+  n_held_out: 10
+  difficulty_mix:
+    easy: 0.33
+    medium: 0.34
+    hard: 0.33
+  seed: 42
+
+interaction:
+  max_turns_per_task: 12
+  give_up_threshold_repeats: 5
+
+conditions:
+  - stateless
+  - skillmap
+
+sanity_check:
+  timeout_per_test_seconds: 10
+  skip_on_extraction_failure: true
+
+paths:
+  profiles_dir: ./skillmap_eval/preferences/profiles
+  results_dir: ./results
+  logs_dir: ./results/logs

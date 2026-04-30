@@ -63,7 +63,7 @@ class PreferenceProfile(BaseModel):
 
 class EvalTask(BaseModel):
     task_id: str
-    source: Literal["livecodebench"]
+    source: Literal["livecodebench", "aime"]
     problem_statement: str
     reference_solution: Optional[str] = None
     test_cases: list[dict] = Field(default_factory=list)

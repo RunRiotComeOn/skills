@@ -1,7 +1,8 @@
-"""Stage C: select ≤ 5 skills from catalog for the current task."""
+"""Stage C: select ≤ MAX_SKILLS_PER_TASK skills from catalog for the current task."""
 
 from __future__ import annotations
 
+import os
 from typing import Any
 
 from pydantic import BaseModel
@@ -12,7 +13,7 @@ from skillmap.storage.skill_map import SkillMap
 from skillmap.types import CatalogEntry, Skill
 
 
-MAX_SKILLS_PER_TASK = 5
+MAX_SKILLS_PER_TASK = int(os.environ.get("SKILLMAP_TOP_K", "5"))
 
 
 class _SelectorResponse(BaseModel):

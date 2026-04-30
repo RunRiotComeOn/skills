@@ -24,7 +24,9 @@ from skillmap_eval.simulator.correction_generator import (
 )
 from skillmap_eval.simulator.prompts import (
     USER_INITIATE_PROMPT,
+    USER_INITIATE_PROMPT_AIME,
     USER_RESPONSE_PROMPT,
+    USER_RESPONSE_PROMPT_AIME,
 )
 from skillmap_eval.types import (
     CorrectionAxis,
@@ -72,7 +74,8 @@ class UserSimulator:
         self._pref_by_id: dict[str, Preference] = {p.id: p for p in profile.preferences}
 
     async def initiate_task(self, task: EvalTask) -> str:
-        prompt = USER_INITIATE_PROMPT.format(task_problem=task.problem_statement)
+        template = USER_INITIATE_PROMPT_AIME if task.source == "aime" else USER_INITIATE_PROMPT
+        prompt = template.format(task_problem=task.problem_statement)
         result = await self._client.call(messages=[{"role": "user", "content": prompt}])
         if not isinstance(result, str):
             raise RuntimeError("expected string response from LLMClient")
@@ -90,7 +93,8 @@ class UserSimulator:
             f"{test_results}\n\n"
             if test_results else ""
         )
-        prompt = USER_RESPONSE_PROMPT.format(
+        template = USER_RESPONSE_PROMPT_AIME if task.source == "aime" else USER_RESPONSE_PROMPT
+        prompt = template.format(
             preference_profile_rendered=render_profile(self.profile),
             task_problem=task.problem_statement,
             conversation_rendered=render_conversation(conversation_so_far),
