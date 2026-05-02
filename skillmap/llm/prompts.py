@@ -23,8 +23,8 @@ this file enforce that distinction at every stage:
                       when picking algorithm"), not a one-off algorithmic
                       slip on this specific problem.
 
-Skills of different axes are extracted, reconciled, and compacted in
-separate buckets. They are NEVER merged into one another.
+Skills of different axes are extracted and reconciled in separate buckets.
+They are NEVER merged into one another.
 """
 
 # ---------------------------------------------------------------------------
@@ -282,7 +282,7 @@ Candidates (axis = {axis}, indexed from 0):
 SKILL_RECONCILIATION_PROMPT = """\
 You reconcile newly proposed skills (axis = "{axis}") against the existing
 skill library OF THE SAME AXIS. Skills of a different axis are NOT shown
-and MUST NOT be considered as candidates for merge.
+and MUST NOT be considered.
 
 DEFAULT BIAS: discard ONLY when the existing library covers the SAME single
 habit. Lean toward "add" whenever the proposed skill names a habit not
@@ -291,28 +291,31 @@ each skill is small (≤ 60 words, ONE habit) and the selector picks ≤ 2
 per task.
 
 For each proposed skill, choose exactly one action:
-  "discard"  : addresses the SAME single habit as an existing skill (NOT
-               just the same broad area) — e.g. both say "state complexity
-               first" — OR adds only minor wording differences.
-  "update"   : addresses the SAME single habit AND contributes a meaningfully
-               sharper or more general phrasing; provide existing_skill_id
-               and updated_guidance (≤ 60 words, ONE habit, best-of-both).
-               Do NOT use "update" to merge two different habits into a
-               longer combined guidance — keep the existing one and "add"
-               the new one instead.
-  "replace"  : CONTRADICTS an existing skill (proposes opposite behavior
-               for the same situation); provide existing_skill_id and
-               updated_guidance (coherent synthesis, ≤ 60 words).
-  "add"      : covers a habit not addressed by any existing skill in this
-               axis. Two habits are different even if their catalog_triggers
-               overlap — what matters is whether the *guidance* describes
-               the same single check.
 
-If you are tempted to "update" because the existing skill is "close" but
-covers a different habit (e.g. existing = "state complexity first",
-proposed = "name the algorithmic pattern"), choose "add" instead. Long
-combined guidance is BANNED — every stored skill must remain ≤ 60 words
-and one habit.
+  "discard"  : addresses the SAME single habit as an existing skill with no
+               meaningful new phrasing — OR adds only minor wording
+               differences — OR support is too low to warrant a new entry.
+
+  "update"   : same habit, containment (proposed refines or broadens an
+               existing skill), OR correctness-axis override with stronger
+               guidance. Provide existing_skill_id and updated_guidance:
+               best-of-both or the stronger phrasing, ≤ 60 words, ONE habit.
+               Do NOT bundle two different habits — if the proposed covers a
+               DIFFERENT habit, use "add" instead.
+
+  "conflict" : [preference axis ONLY] proposed CONTRADICTS an existing
+               preference skill — it recommends opposite behavior for the
+               same situation. The old skill will be archived and the new
+               one inserted. Provide existing_skill_id and updated_guidance
+               (the new direction, ≤ 60 words). For correctness axis,
+               use "update" instead.
+
+  "add"      : covers a habit not addressed by any existing skill. Two habits
+               are different even when their triggers overlap — what matters
+               is whether the guidance describes the same single check.
+
+Long combined guidance is BANNED — every stored skill must remain ≤ 60
+words and one habit.
 
 Return ONLY a JSON object:
 {{
@@ -321,7 +324,7 @@ Return ONLY a JSON object:
       "proposed_index": 0,
       "action": "discard",
       "existing_skill_id": "uuid-of-existing-or-null",
-      "updated_guidance": "merged guidance text or null"
+      "updated_guidance": "guidance text or null"
     }}
   ]
 }}
@@ -331,58 +334,6 @@ Existing skills, axis = {axis} (id | title | trigger | guidance):
 
 Proposed skills, axis = {axis} (indexed from 0):
 {proposed_skills}
-"""
-
-
-# ---------------------------------------------------------------------------
-# Stage B Step 3 – Catalog Compaction (per axis, when catalog grows)
-# ---------------------------------------------------------------------------
-# Placeholders: {axis}, {skills}
-SKILL_COMPACTION_PROMPT = """\
-You are cleaning up the {axis} half of a behavioral skill library for an AI
-coding assistant. The library may contain duplicate, overlapping, or
-contradictory skills WITHIN this axis. You will not see, and must not
-produce, any skills of the other axis.
-
-Group skills that target the SAME single habit (NOT just the same broad
-area). For each group:
-  • Pick the skill with the highest support_count as the primary
-    (use its id as keep_id)
-  • Write a unified title (≤ 8 words), catalog_trigger, and guidance
-    (≤ 60 words, ONE habit) that covers the whole group
-  • List the ids of all OTHER skills in the group as discard_ids
-
-Skills that target DIFFERENT habits MUST appear as singleton groups
-(discard_ids = []) — even if their triggers or titles look similar.
-"Different habit" means a reader following one skill could still violate
-the other (e.g. naming the pattern doesn't satisfy "state complexity
-first"; using descriptive names doesn't satisfy "extract magic numbers").
-
-Rules:
-  • Every skill id must appear exactly once across all keep_id and
-    discard_ids fields combined.
-  • If two skills contradict each other on the SAME habit, resolve the
-    contradiction in the merged guidance.
-  • Prefer broader, reusable guidance over task-specific wording.
-  • The merged guidance MUST stay ≤ 60 words and cover ONE habit. If a
-    merge would force a longer or multi-habit guidance, KEEP the skills
-    separate (singleton groups).
-
-Return ONLY a JSON object:
-{{
-  "groups": [
-    {{
-      "keep_id": "uuid-of-primary-skill",
-      "title": "unified title",
-      "catalog_trigger": "unified catalog trigger",
-      "guidance": "unified guidance",
-      "discard_ids": ["uuid-of-absorbed-skill", ...]
-    }}
-  ]
-}}
-
-Current {axis}-axis skill library:
-{skills}
 """
 
 

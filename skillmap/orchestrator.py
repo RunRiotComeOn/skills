@@ -8,7 +8,6 @@ finalize_task → Stage A (summarize) → append to buffer
 from __future__ import annotations
 
 CONSOLIDATION_TRIGGER = 20
-COMPACTION_THRESHOLD = 8  # compact catalog when it grows beyond this many skills
 
 from skillmap.induction.consolidator import SkillConsolidator
 from skillmap.induction.summarizer import CorrectionSummarizer
@@ -103,10 +102,3 @@ class Orchestrator:
                 await self.consolidator.run(self.skill_map)
             except Exception as exc:
                 print(f"[orchestrator] consolidator error: {exc}")
-
-            # Compact when catalog grows large enough to accumulate duplicates
-            if len(self.skill_map.get_catalog()) >= COMPACTION_THRESHOLD:
-                try:
-                    await self.consolidator.compact(self.skill_map)
-                except Exception as exc:
-                    print(f"[orchestrator] compaction error: {exc}")

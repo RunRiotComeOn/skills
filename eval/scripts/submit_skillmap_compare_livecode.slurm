@@ -1,5 +1,5 @@
 #!/bin/bash -l
-#SBATCH -J skillmap-compare-aime
+#SBATCH -J skillmap-compare-livecode
 #SBATCH -A bgek-delta-gpu
 #SBATCH -p gpuA40x4
 #SBATCH -N 1
@@ -14,13 +14,13 @@ set -euo pipefail
 cd /u/yhuang48/SkillMap
 mkdir -p eval/results/slurm
 
-PROFILE_ID="${PROFILE_ID:-haiku_minimax_aime_v2}"
-SESSION_ID="${SESSION_ID_OVERRIDE:-compare_aime_${SLURM_JOB_ID}}"
+PROFILE_ID="${PROFILE_ID:-haiku_minimax_livecodebench_v1}"
+SESSION_ID="${SESSION_ID_OVERRIDE:-compare_livecode_${SLURM_JOB_ID}}"
 CONDITIONS="${CONDITIONS:-stateless,skillmap}"
 
 env PYTHONPATH=. PYTHONUNBUFFERED=1 SKILLMAP_TOP_K=3 python -u eval/scripts/run_skillmap_days.py \
   --profile "${PROFILE_ID}" \
-  --config eval/eval_config_aime.yaml \
+  --config eval/eval_config_livecode.yaml \
   --days 3 \
   --tasks-per-day 20 \
   --session-id "${SESSION_ID}" \

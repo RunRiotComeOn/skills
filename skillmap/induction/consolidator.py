@@ -4,11 +4,24 @@ Two-axis processing
 -------------------
 The buffer holds summaries from BOTH axes (preference and correctness).
 The consolidator splits the buffer by axis and runs the full Stage B
-pipeline (extract → dedup → reconcile) ONCE PER AXIS. Reconciliation and
-compaction also operate within an axis: a preference skill is never
-compared against, merged into, or replaced by a correctness skill (and
-vice versa). The two axes track different metrics and must remain
-independently inspectable.
+pipeline (extract → dedup → reconcile) ONCE PER AXIS. Reconciliation
+operates within an axis: a preference skill is never compared against or
+replaced by a correctness skill (and vice versa). The two axes track
+different metrics and must remain independently inspectable.
+
+Containment / conflict handling (done at reconcile time, not batch-end)
+-----------------------------------------------------------------------
+When a candidate covers the same habit as an existing skill (same or
+containment relationship), the LLM issues "update" and the existing skill
+is updated in-place with the best-of-both guidance.
+
+When a candidate CONTRADICTS an existing PREFERENCE skill, the LLM issues
+"conflict": the old skill is deprecated (status → "past", removed from
+catalog) and the new skill is inserted as active.
+
+For CORRECTNESS contradictions the LLM issues "replace": the existing
+skill is updated in-place with the new guidance (no "past" archival —
+one of the two was objectively wrong, so there is no value in keeping it).
 
 Per-axis MIN_SUPPORT
 --------------------
@@ -31,7 +44,6 @@ from skillmap.llm.prompts import (
     AXIS_GUIDANCE_CORRECTNESS,
     AXIS_GUIDANCE_PREFERENCE,
     SKILL_CANDIDATE_EXTRACTION_PROMPT,
-    SKILL_COMPACTION_PROMPT,
     SKILL_DEDUP_PROMPT,
     SKILL_RECONCILIATION_PROMPT,
 )
@@ -88,18 +100,6 @@ class _DecisionItem(BaseModel):
 
 class _ReconciliationResponse(BaseModel):
     decisions: list[_DecisionItem]
-
-
-class _CompactionGroup(BaseModel):
-    keep_id: str
-    title: str
-    catalog_trigger: str
-    guidance: str
-    discard_ids: list[str]
-
-
-class _CompactionResponse(BaseModel):
-    groups: list[_CompactionGroup]
 
 
 # ---------------------------------------------------------------------------
@@ -185,7 +185,9 @@ class SkillConsolidator:
             if action == "discard":
                 continue
 
-            elif action in ("update", "replace"):
+            elif action == "update":
+                # Same habit, containment, or correctness-axis override — all
+                # update existing skill in place. Cross-axis updates forbidden.
                 existing_id = (
                     dec.get("existing_skill_id") if isinstance(dec, dict)
                     else dec.existing_skill_id
@@ -194,12 +196,43 @@ class SkillConsolidator:
                     (dec.get("updated_guidance") if isinstance(dec, dict) else dec.updated_guidance)
                     or cand.guidance
                 )
-                # Cross-axis updates are forbidden — guard against an LLM that
-                # somehow surfaced a different-axis id (shouldn't happen since
-                # we filter the catalog, but be defensive).
                 if existing_id and existing_id in existing_axis_ids:
                     new_ids = [sid for sid in cand.supporting_summary_ids if sid in summary_ids]
                     skill_map.update_skill(existing_id, new_guidance, new_ids)
+
+            elif action == "conflict":
+                # Preference-only: user's preference has changed. Deprecate the
+                # old skill (archive as "past") and insert the new one as active.
+                # Using "conflict" for correctness is a prompt error — fall back
+                # to "replace" semantics (update in place) to avoid data loss.
+                existing_id = (
+                    dec.get("existing_skill_id") if isinstance(dec, dict)
+                    else dec.existing_skill_id
+                )
+                new_guidance = (
+                    (dec.get("updated_guidance") if isinstance(dec, dict) else dec.updated_guidance)
+                    or cand.guidance
+                )
+                if existing_id and existing_id in existing_axis_ids:
+                    if axis == "preference":
+                        skill_map.deprecate_skill(existing_id)
+                        valid_ids = [sid for sid in cand.supporting_summary_ids if sid in summary_ids]
+                        if len(valid_ids) >= min_support:
+                            skill = Skill(
+                                id=str(uuid.uuid4()),
+                                title=cand.title,
+                                catalog_trigger=cand.catalog_trigger,
+                                guidance=new_guidance,
+                                axis=axis,
+                                support_count=len(valid_ids),
+                                supporting_summary_ids=valid_ids,
+                                created_at=now,
+                                updated_at=now,
+                            )
+                            skill_map.insert_skill(skill)
+                    else:
+                        new_ids = [sid for sid in cand.supporting_summary_ids if sid in summary_ids]
+                        skill_map.update_skill(existing_id, new_guidance, new_ids)
 
             else:  # "add"
                 valid_ids = [sid for sid in cand.supporting_summary_ids if sid in summary_ids]
@@ -217,69 +250,6 @@ class SkillConsolidator:
                     updated_at=now,
                 )
                 skill_map.insert_skill(skill)
-
-    async def compact(self, skill_map: SkillMap) -> None:
-        """Per-axis catalog compaction: merge overlapping/contradictory skills."""
-        all_skills = skill_map.list_skills()
-        if len(all_skills) <= 1:
-            return
-
-        for axis in ("preference", "correctness"):
-            axis_skills = [s for s in all_skills if s.axis == axis]
-            if len(axis_skills) <= 1:
-                continue
-            await self._compact_axis(skill_map, axis, axis_skills)
-
-    async def _compact_axis(
-        self,
-        skill_map: SkillMap,
-        axis: SkillAxis,
-        skills: list[Skill],
-    ) -> None:
-        formatted = "\n\n".join(
-            f"id: {s.id}\ntitle: {s.title!r}\ntrigger: {s.catalog_trigger!r}\n"
-            f"guidance: {s.guidance!r}\nsupport_count: {s.support_count}"
-            for s in skills
-        )
-        prompt = SKILL_COMPACTION_PROMPT.format(axis=axis, skills=formatted)
-
-        last_exc: Exception | None = None
-        for _ in range(self.retry_max):
-            try:
-                raw: Any = await self._client.call(
-                    messages=[{"role": "user", "content": prompt}],
-                    response_schema=_CompactionResponse,
-                )
-                groups = raw.get("groups", [])
-                # Only this axis's ids are eligible — defend against an LLM
-                # that hallucinates an id from the other axis.
-                axis_ids = {s.id for s in skills}
-
-                for group in groups:
-                    keep_id = group.get("keep_id") if isinstance(group, dict) else group.keep_id
-                    title = group.get("title") if isinstance(group, dict) else group.title
-                    trigger = group.get("catalog_trigger") if isinstance(group, dict) else group.catalog_trigger
-                    guidance = group.get("guidance") if isinstance(group, dict) else group.guidance
-                    discard_ids = group.get("discard_ids", []) if isinstance(group, dict) else group.discard_ids
-
-                    if not keep_id or keep_id not in axis_ids:
-                        continue
-                    valid_discards = [d for d in discard_ids if d != keep_id and d in axis_ids]
-                    try:
-                        skill_map.merge_skill(
-                            primary_id=keep_id,
-                            updated_title=title,
-                            updated_trigger=trigger,
-                            updated_guidance=guidance,
-                            absorb_ids=valid_discards,
-                        )
-                        axis_ids -= set(valid_discards)
-                    except Exception as exc:
-                        print(f"[compactor] merge failed for {keep_id}: {exc}")
-                return
-            except Exception as exc:
-                last_exc = exc
-        print(f"[compactor:{axis}] compaction failed after {self.retry_max} retries: {last_exc}")
 
     # ------------------------------------------------------------------
     # Internal helpers

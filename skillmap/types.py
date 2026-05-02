@@ -18,8 +18,8 @@ feedback into two distinct learning channels:
                 formula for THIS specific problem"). Extracted skills
                 should lift test-case pass rate over time.
 
-Skills of different axes are NEVER merged together; reconciliation and
-compaction operate within an axis.
+Skills of different axes are NEVER merged together; reconciliation
+operates within an axis.
 """
 
 from __future__ import annotations
@@ -30,6 +30,7 @@ from pydantic import BaseModel, Field
 
 
 SkillAxis = Literal["preference", "correctness"]
+SkillStatus = Literal["active", "past"]
 
 
 class CorrectionSummary(BaseModel):
@@ -61,6 +62,9 @@ class Skill(BaseModel):
     #   • which catalog the selector pulls from at task start
     #   • which eval metric it is expected to move
     axis: SkillAxis = "preference"
+    # "past" means superseded by a newer conflicting preference skill.
+    # Past skills are excluded from the catalog and never selected.
+    status: SkillStatus = "active"
     support_count: int
     supporting_summary_ids: list[str] = Field(default_factory=list)
     created_at: datetime

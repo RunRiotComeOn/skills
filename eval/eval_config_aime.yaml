@@ -1,5 +1,6 @@
-# Eval config for AIME math tasks.
-# Mirrors eval_config.yaml but points at the AIME dataset.
+# Eval config for AIME math tasks — v2.
+# Compared to v1: longer turn budget (8→12), higher give-up threshold (3→5),
+# and references the trimmed 5-preference profile haiku_minimax_aime_v2.
 
 llm:
   llm_a_model: us.anthropic.claude-haiku-4-5-20251001-v1:0
@@ -12,7 +13,7 @@ llm:
   region: us-east-1
 
 preferences:
-  n_preferences: 10
+  n_preferences: 5
   retry_max: 3
 
 tasks:
@@ -27,8 +28,8 @@ tasks:
   seed: 42
 
 interaction:
-  max_turns_per_task: 8
-  give_up_threshold_repeats: 3
+  max_turns_per_task: 12
+  give_up_threshold_repeats: 5
 
 conditions:
   - stateless
