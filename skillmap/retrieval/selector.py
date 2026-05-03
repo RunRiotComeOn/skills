@@ -81,7 +81,10 @@ class CatalogSelector:
 
 
 def _render_catalog(catalog: list[CatalogEntry]) -> str:
-    return "\n".join(
-        f"[{e.axis}] [{e.id}] {e.title}\n  trigger: {e.catalog_trigger}"
-        for e in catalog
-    )
+    lines = []
+    for e in catalog:
+        if e.description:
+            lines.append(f"[{e.axis}] [{e.id}] {e.title} — {e.description}")
+        else:
+            lines.append(f"[{e.axis}] [{e.id}] {e.title}\n  trigger: {e.catalog_trigger}")
+    return "\n".join(lines)

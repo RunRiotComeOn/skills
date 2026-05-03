@@ -111,6 +111,7 @@ class SkillMap:
             CatalogEntry(
                 id=s.id,
                 title=s.title,
+                description=s.description,
                 catalog_trigger=s.catalog_trigger,
                 axis=s.axis,
             )

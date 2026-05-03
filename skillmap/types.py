@@ -41,7 +41,7 @@ class CorrectionSummary(BaseModel):
     triggering_situation: str   # abstracted context, no task-specific details
     what_was_wrong: str         # what the assistant did on first attempt
     what_user_wanted: str       # the positive desired behavior
-    correction_quote: str       # short verbatim excerpt from user correction
+    correction_quote: str       # verbatim excerpt from user correction, ≤ 3 sentences
     # See module docstring for the axis semantics.
     correction_type: SkillAxis = "preference"
     # For correctness summaries only: short note on what makes this correction
@@ -56,6 +56,10 @@ class Skill(BaseModel):
     id: str
     title: str                          # ≤ 10 words
     catalog_trigger: str                # one sentence: "when X"
+    # One-sentence index hook combining trigger + action, used by the
+    # selector for relevance matching without reading full guidance.
+    # Format: "When <situation>, <what the assistant must do>."
+    description: str = ""
     guidance: str                       # concrete do/don't instruction
     # Which user-feedback channel produced this skill. Determines:
     #   • which buffer it consolidates from (Stage B, axis-segregated)
@@ -75,6 +79,9 @@ class CatalogEntry(BaseModel):
     """Lightweight index entry shown to the Stage C selector LLM."""
     id: str
     title: str
+    # One-sentence hook for selector relevance matching (copied from Skill.description).
+    # Empty for skills created before this field was added; selector falls back to trigger.
+    description: str = ""
     catalog_trigger: str
     axis: SkillAxis = "preference"
 

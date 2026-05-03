@@ -71,6 +71,7 @@ _AXIS_GUIDANCE: dict[SkillAxis, str] = {
 
 class _CandidateItem(BaseModel):
     title: str
+    description: str = ""
     catalog_trigger: str
     guidance: str
     supporting_summary_ids: list[str]
@@ -82,6 +83,7 @@ class _CandidatesResponse(BaseModel):
 
 class _MergedItem(BaseModel):
     title: str
+    description: str = ""
     catalog_trigger: str
     guidance: str
     source_indices: list[int]
@@ -221,6 +223,7 @@ class SkillConsolidator:
                             skill = Skill(
                                 id=str(uuid.uuid4()),
                                 title=cand.title,
+                                description=cand.description,
                                 catalog_trigger=cand.catalog_trigger,
                                 guidance=new_guidance,
                                 axis=axis,
@@ -241,6 +244,7 @@ class SkillConsolidator:
                 skill = Skill(
                     id=str(uuid.uuid4()),
                     title=cand.title,
+                    description=cand.description,
                     catalog_trigger=cand.catalog_trigger,
                     guidance=cand.guidance,
                     axis=axis,
@@ -289,7 +293,7 @@ class SkillConsolidator:
     ) -> list[_CandidateItem]:
         """Merge near-duplicate candidates within a single batch before reconciliation."""
         formatted = "\n".join(
-            f"{i}. title={c.title!r} | trigger={c.catalog_trigger!r} | guidance={c.guidance!r}"
+            f"{i}. title={c.title!r} | description={c.description!r} | trigger={c.catalog_trigger!r} | guidance={c.guidance!r}"
             for i, c in enumerate(candidates)
         )
         prompt = SKILL_DEDUP_PROMPT.format(axis=axis, candidates=formatted)
@@ -320,10 +324,12 @@ class SkillConsolidator:
                                     combined_ids.append(sid)
                                     seen_ids.add(sid)
                     title = m.get("title") if isinstance(m, dict) else m.title
+                    description = m.get("description", "") if isinstance(m, dict) else m.description
                     trigger = m.get("catalog_trigger") if isinstance(m, dict) else m.catalog_trigger
                     guidance = m.get("guidance") if isinstance(m, dict) else m.guidance
                     result.append(_CandidateItem(
                         title=title,
+                        description=description,
                         catalog_trigger=trigger,
                         guidance=guidance,
                         supporting_summary_ids=combined_ids,

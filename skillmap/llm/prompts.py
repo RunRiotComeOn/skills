@@ -96,7 +96,13 @@ GENERAL RULES (both axes)
 • Abstract away ALL task-specific details: no problem names, variable names,
   literal code fragments, or specific numbers from this task.
 • Each summary describes a FAMILY of situations, not just this one task.
-• correction_quote: verbatim excerpt from the user correction turn, ≤ 30 words.
+• correction_quote: verbatim excerpt from the user correction turn, ≤ 3 sentences. Capture the key redirecting statement(s); do not copy the entire turn.
+• DO NOT extract when the user restores standard domain practice that any
+  competent assistant would follow by default — e.g. "add type hints",
+  "handle None", "use snake_case", "close the file". Extract only when the
+  user actively redirected behavior the assistant was choosing differently;
+  there must be an actual behavioral gap to close, not just a reminder of
+  universal good practice.
 
 Return ONLY a JSON object:
 {{
@@ -174,17 +180,26 @@ HARD CAPS (a candidate violating either is invalid and must be split):
 If you find yourself writing "do X, and Y, and Z", that is THREE skills,
 not one — emit three candidates.
 
+Each candidate must also include a "description" field: a single sentence
+that combines the trigger condition and the required action, written so a
+selector can judge relevance without reading guidance. Format:
+  "When <situation>, <what the assistant must do>."
+Keep it ≤ 20 words. This is the index hook used for retrieval; it must be
+self-contained and specific, not a restatement of the title.
+
 Return ONLY a JSON object:
 {{
   "candidates": [
     {{
       "title": "State Complexity Upfront",
+      "description": "When presenting any algorithmic solution, state time and space complexity in Big-O before writing code.",
       "catalog_trigger": "when presenting any algorithmic solution",
       "guidance": "Before writing code, state time and space complexity in Big-O with a one-sentence justification.",
       "supporting_summary_ids": ["id1", "id3", "id7"]
     }},
     {{
       "title": "Name the Algorithmic Pattern",
+      "description": "When presenting any algorithmic solution, explicitly name the core pattern (sliding window, DP, greedy) before code.",
       "catalog_trigger": "when presenting any algorithmic solution",
       "guidance": "Explicitly name the core algorithmic pattern (e.g. sliding window, DP, greedy) before showing code.",
       "supporting_summary_ids": ["id1", "id4"]
@@ -260,6 +275,7 @@ Return ONLY a JSON object:
   "merged": [
     {{
       "title": "...",
+      "description": "...",
       "catalog_trigger": "...",
       "guidance": "...",
       "source_indices": [0, 2]
