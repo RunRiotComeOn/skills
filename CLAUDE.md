@@ -41,15 +41,15 @@ python eval/scripts/make_figures.py --report results/eval_report_coding_v1.json
 
 **Stage B — Consolidation** (`skillmap/induction/consolidator.py`): When pending summaries reach `CONSOLIDATION_TRIGGER` (20), run per-axis: extract skill candidates → dedup → reconcile against existing catalog. Reconcile handles containment/merging inline — no separate compaction step. The two axes are processed completely separately.
 
-**Stage C — Selection & Retrieval** (`skillmap/retrieval/selector.py`): At task start, select up to `MAX_SKILLS_PER_TASK` (2, overridable via `SKILLMAP_TOP_K` env var) skills from the catalog using an LLM-based selector. Only `active` skills appear in the catalog. Skills are injected with axis labels so the model can balance preference vs. correctness guidance.
+**Stage C — Selection & Retrieval** (`skillmap/retrieval/selector.py`): At task start, select up to `MAX_SKILLS_PER_TASK` (2, overridable via `SKILLMAP_TOP_K` env var) skills from the catalog using an LLM-based selector. Only `active` skills appear in the catalog. The selector sees lightweight catalog entries (`title + description` one-liner, not full guidance); full `guidance` is only injected for selected skills. Skills are injected with axis labels so the model can balance preference vs. correctness guidance.
 
 The pipeline is wired together in `skillmap/orchestrator.py`.
 
 ## Key Data Model (`skillmap/types.py`)
 
-- **`CorrectionSummary`**: One record per correction; carries `correction_type` (preference/correctness) and `verification_evidence` (required for correctness axis)
-- **`Skill`**: Reusable guideline backed by ≥ `MIN_SUPPORT` summaries; includes `axis`, `title`, `guidance`, `support_count`, and `status` (`"active"` | `"past"`)
-- **`CatalogEntry`**: Lightweight index entry used by the selector
+- **`CorrectionSummary`**: One record per correction; carries `correction_type` (preference/correctness) and `verification_evidence` (required for correctness axis). `correction_quote` is a verbatim excerpt ≤ 3 sentences (captures the key redirecting statement, not the full turn).
+- **`Skill`**: Reusable guideline backed by ≥ `MIN_SUPPORT` summaries; includes `axis`, `title`, `description`, `guidance`, `support_count`, and `status` (`"active"` | `"past"`). `description` is a one-sentence index hook ("When X, do Y") generated at consolidation time for retrieval matching; defaults to `""` for skills created before this field was added.
+- **`CatalogEntry`**: Lightweight index entry used by the selector; mirrors `Skill.description`. The selector renders entries as `[axis] [id] title — description` when description is present, falling back to `title + trigger` for older entries.
 - **`SkillMapState`**: Persisted JSON state — skills, pending summaries, and rebuilt catalog
 
 ## LLM Client (`skillmap/llm/client.py`)
@@ -79,6 +79,13 @@ Tests whether SkillMap accumulates and reuses preferences across LiveCodeBench/A
 
 - Preference and correctness skills are **never merged across axes** — each axis is fully independent through Stages B and C
 - Correctness summaries **without verification evidence are dropped** — false-positive correctness skills can nudge the model toward incorrect fixes
+- The summarizer **does not extract** corrections where the user merely restores standard domain practice (e.g. "add type hints", "handle None") — only genuine behavioral redirections where the assistant was actively deviating
 - The catalog only contains `active` skills; `past` skills exist in storage for audit but are invisible to the selector
 - The catalog is flat (no DAG, no hierarchy); skills are sorted by support count
 - `MIN_SUPPORT_BY_AXIS` defaults to 3 for both axes (set in `consolidator.py`)
+
+## Evaluation (`eval/scripts/run_skillmap_days.py`)
+
+`--repeat-tasks` flag: when set, all days use the **same** fixed task set (sampled once with the configured seed) rather than disjoint batches. Useful for measuring within-user learning signal across repeated exposure to the same problem set.
+
+SLURM scripts are in `eval/scripts/`. GPU jobs use account `bgek-delta-gpu`, partition `gpuA100x4`.

@@ -194,39 +194,59 @@ def _sample_day_batches(
     tasks_per_day: int,
     difficulty_mix: dict[str, float],
     seed: int,
+    repeat_tasks: bool = False,
 ) -> list[list[EvalTask]]:
     import random
+
+    if repeat_tasks:
+        # Sample one fixed batch and reuse it for every day.
+        per_day_counts = _integer_allocation(difficulty_mix, tasks_per_day)
+        by_diff: dict[str, list[EvalTask]] = {diff: [] for diff in difficulty_mix}
+        for task in tasks:
+            if task.difficulty in by_diff:
+                by_diff[task.difficulty].append(task)
+        rng = random.Random(seed)
+        for diff, items in by_diff.items():
+            rng.shuffle(items)
+            if len(items) < per_day_counts[diff]:
+                raise ValueError(
+                    f"not enough {diff} tasks: need {per_day_counts[diff]}, have {len(items)}"
+                )
+        batch: list[EvalTask] = []
+        for diff in ("easy", "medium", "hard"):
+            batch.extend(by_diff[diff][: per_day_counts[diff]])
+        return [batch for _ in range(days)]
 
     total = days * tasks_per_day
     overall_counts = _integer_allocation(difficulty_mix, total)
     per_day_counts = _integer_allocation(difficulty_mix, tasks_per_day)
 
-    by_diff: dict[str, list[EvalTask]] = {diff: [] for diff in difficulty_mix}
+    by_diff2: dict[str, list[EvalTask]] = {diff: [] for diff in difficulty_mix}
     for task in tasks:
-        if task.difficulty in by_diff:
-            by_diff[task.difficulty].append(task)
+        if task.difficulty in by_diff2:
+            by_diff2[task.difficulty].append(task)
 
-    rng = random.Random(seed)
-    for diff, items in by_diff.items():
-        rng.shuffle(items)
+    rng2 = random.Random(seed)
+    for diff, items in by_diff2.items():
+        rng2.shuffle(items)
         if len(items) < overall_counts[diff]:
             raise ValueError(
                 f"not enough {diff} tasks for {days} days: need {overall_counts[diff]}, have {len(items)}"
             )
 
     selected = {
-        diff: by_diff[diff][: overall_counts[diff]]
+        diff: by_diff2[diff][: overall_counts[diff]]
         for diff in overall_counts
     }
 
     batches: list[list[EvalTask]] = []
     for day_idx in range(days):
-        batch: list[EvalTask] = []
+        day_batch: list[EvalTask] = []
         for diff in ("easy", "medium", "hard"):
             start = day_idx * per_day_counts[diff]
             end = start + per_day_counts[diff]
-            batch.extend(selected[diff][start:end])
-        batches.append(batch)
+            day_batch.extend(selected[diff][start:end])
+        batches.append(day_batch)
     return batches
 
 
@@ -468,6 +488,7 @@ async def _run(args: argparse.Namespace) -> Path:
         tasks_per_day=args.tasks_per_day,
         difficulty_mix={k: float(v) for k, v in cfg["tasks"]["difficulty_mix"].items()},
         seed=int(cfg["tasks"]["seed"]),
+        repeat_tasks=args.repeat_tasks,
     )
 
     llm = cfg["llm"]
@@ -610,6 +631,12 @@ def main() -> None:
         type=int,
         default=10,
         help="Window size for cross-day rolling-mean correction curves.",
+    )
+    parser.add_argument(
+        "--repeat-tasks",
+        action="store_true",
+        default=False,
+        help="Use the same task set for every day instead of disjoint batches.",
     )
     args = parser.parse_args()
 
